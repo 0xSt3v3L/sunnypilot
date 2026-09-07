@@ -20,7 +20,8 @@ from opendbc.sunnypilot.car.hyundai.longitudinal.helpers import LongitudinalTuni
 from opendbc.sunnypilot.car.hyundai.values import HyundaiFlagsSP
 from opendbc.sunnypilot.car.subaru.values_ext import SubaruFlagsSP, SubaruSafetyFlagsSP
 from opendbc.sunnypilot.car.tesla.values import MadsScreenButtonType, TeslaFlagsSP, TeslaSafetyFlagsSP
-from opendbc.sunnypilot.car.toyota.values import ToyotaFlagsSP
+from opendbc.sunnypilot.car.toyota.auto_brake_hold import is_auto_brake_hold_available
+from opendbc.sunnypilot.car.toyota.values import ToyotaFlagsSP, ToyotaSafetyFlagsSP
 
 
 class LatControlInputs(NamedTuple):
@@ -157,6 +158,7 @@ def _initialize_toyota(CP: structs.CarParams, CP_SP: structs.CarParamsSP, params
   if CP.brand == 'toyota':
     toyota_stock_long = int(params_dict.get("ToyotaEnforceStockLongitudinal", 0)) == 1
     toyota_stop_and_go_hack = int(params_dict.get("ToyotaStopAndGoHack", 0)) == 1
+    toyota_auto_hold = int(params_dict.get("ToyotaAutoHold", 0)) == 1
 
     if toyota_stock_long:
       CP_SP.flags |= ToyotaFlagsSP.STOCK_LONGITUDINAL.value
@@ -166,3 +168,7 @@ def _initialize_toyota(CP: structs.CarParams, CP_SP: structs.CarParamsSP, params
 
     if toyota_stop_and_go_hack and CP.openpilotLongitudinalControl:
       CP_SP.flags |= ToyotaFlagsSP.STOP_AND_GO_HACK.value
+
+    if toyota_auto_hold and is_auto_brake_hold_available(CP):
+      CP_SP.flags |= ToyotaFlagsSP.AUTO_BRAKE_HOLD.value
+      CP_SP.safetyParam |= ToyotaSafetyFlagsSP.AUTO_BRAKE_HOLD
