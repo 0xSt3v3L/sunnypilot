@@ -5,6 +5,7 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 
+import copy
 from enum import StrEnum
 
 from opendbc.car import Bus, structs
@@ -34,6 +35,10 @@ class CarStateExt:
     self.zss_cruise_active_last = False
     self.zss_angle_offset = 0.
     self.zss_threshold_count = 0
+
+    self.pre_collision_2 = {}
+    self.pre_collision_2_seen = False
+    self.pre_collision_2_ts_nanos = 0
 
     """Initialize traffic signal variables"""
     self._tsgn1 = None
@@ -140,6 +145,12 @@ class CarStateExt:
     if self.CP_SP.enableGasInterceptor:
       gas = (cp.vl["GAS_SENSOR"]["INTERCEPTOR_GAS"] + cp.vl["GAS_SENSOR"]["INTERCEPTOR_GAS2"]) // 2
       ret.gasPressed = gas > 805
+
+    if (self.CP_SP.flags & ToyotaFlagsSP.AUTO_BRAKE_HOLD and
+        len(cp_cam.vl_all["PRE_COLLISION_2"]["DSS1GDRV"]) > 0):
+      self.pre_collision_2 = copy.copy(cp_cam.vl["PRE_COLLISION_2"])
+      self.pre_collision_2_seen = True
+      self.pre_collision_2_ts_nanos = cp_cam.ts_nanos["PRE_COLLISION_2"]["DSS1GDRV"]
 
     # ZSS support thanks to zorrobyte, ErichMoraga, and dragonpilot
     if self.CP_SP.flags & ToyotaFlagsSP.ZSS:
