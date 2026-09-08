@@ -509,5 +509,84 @@ class TestToyotaSecOcSafety(TestToyotaSecOcSafetyBase):
         self.assertEqual(should_tx, self._tx(self._accel_msg_343(accel, cancel_req=1)))
 
 
+class TestToyotaAutoBrakeHoldSafety(TestToyotaSafetyTorque):
+  """
+  Automatic brake hold reconstructs PRE_COLLISION_2 on bus 0. The camera's copy must only be
+  blocked while the host is actively transmitting, so a host failure falls back to stock forwarding.
+  """
+
+  SAFETY_PARAM_SP = ToyotaSafetyFlagsSP.AUTO_BRAKE_HOLD
+
+  BRAKE_HOLD_TX_TIMEOUT = 100000
+
+  def _pre_collision_2_msg(self, bus: int = 0):
+    values = {"DSS1GDRV": 0x3FF, "PBRTRGR": 1}
+    return self.packer.make_can_msg_safety("PRE_COLLISION_2", bus, values)
+
+  def test_camera_forwarded_before_any_host_tx(self):
+    self.safety.set_timer(1)
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+  def test_brake_hold_forwarding_watchdog(self):
+    self.safety.set_timer(1)
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+    self.assertTrue(self._tx(self._pre_collision_2_msg()))
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, 0x344))
+
+    self.safety.set_timer(1 + self.BRAKE_HOLD_TX_TIMEOUT)
+    self.assertEqual(-1, self.safety.safety_fwd_hook(2, 0x344))
+
+    self.safety.set_timer(2 + self.BRAKE_HOLD_TX_TIMEOUT)
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+  def test_watchdog_refreshes_on_each_host_tx(self):
+    self.safety.set_timer(1)
+    self.assertTrue(self._tx(self._pre_collision_2_msg()))
+
+    # a fresh transmission every 20ms keeps the camera message blocked indefinitely
+    for ts in range(20001, 20001 + (20000 * 10), 20000):
+      self.safety.set_timer(ts)
+      self.assertEqual(-1, self.safety.safety_fwd_hook(2, 0x344))
+      self.assertTrue(self._tx(self._pre_collision_2_msg()))
+
+    self.safety.set_timer(20001 + (20000 * 9) + self.BRAKE_HOLD_TX_TIMEOUT + 1)
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+  def test_only_pre_collision_2_is_blocked(self):
+    self.safety.set_timer(1)
+    self.assertTrue(self._tx(self._pre_collision_2_msg()))
+    for addr in (0x283, 0x365, 0x411):
+      self.assertEqual(0, self.safety.safety_fwd_hook(2, addr))
+
+  def test_wrong_bus_does_not_block_forwarding(self):
+    self.safety.set_timer(1)
+    # 0x344 is only allowed on bus 0, so a bus 2 copy must be rejected and must not arm the watchdog
+    self.assertFalse(self._tx(self._pre_collision_2_msg(bus=2)))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+  def test_wrong_length_does_not_block_forwarding(self):
+    self.safety.set_timer(1)
+    self.assertFalse(self._tx(libsafety_py.make_CANPacket(0x344, 0, b"\x00" * 7)))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+  def test_host_to_camera_direction_is_untouched(self):
+    self.safety.set_timer(1)
+    self.assertTrue(self._tx(self._pre_collision_2_msg()))
+    self.assertEqual(2, self.safety.safety_fwd_hook(0, 0x344))
+
+
+class TestToyotaAutoBrakeHoldDisabledSafety(TestToyotaSafetyTorque):
+  """Without the safety flag, host PRE_COLLISION_2 must not affect stock camera forwarding."""
+
+  SAFETY_PARAM_SP = ToyotaSafetyFlagsSP.DEFAULT
+
+  def test_camera_forwarding_unchanged_after_host_tx(self):
+    self.safety.set_timer(1)
+    values = {"DSS1GDRV": 0x3FF, "PBRTRGR": 1}
+    self.assertTrue(self._tx(self.packer.make_can_msg_safety("PRE_COLLISION_2", 0, values)))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x344))
+
+
 if __name__ == "__main__":
   unittest.main()

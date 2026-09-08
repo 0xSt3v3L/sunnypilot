@@ -71,6 +71,13 @@ static bool toyota_stock_longitudinal = false;
 static bool toyota_lta = false;
 static int toyota_dbc_eps_torque_factor = 100;   // conversion factor for STEER_TORQUE_EPS in %: see dbc file
 
+// sunnypilot: automatic brake hold reconstructs PRE_COLLISION_2 (0x344) on bus 0, so the camera's
+// copy is only blocked while the host keeps transmitting. Forwarding fails open after the timeout.
+const uint32_t TOYOTA_BRAKE_HOLD_TX_TIMEOUT = 100000U;  // 100ms, the host sends every 20ms
+static bool toyota_auto_brake_hold = false;
+static bool toyota_brake_hold_tx_seen = false;
+static uint32_t toyota_brake_hold_tx_ts = 0U;
+
 static uint32_t toyota_compute_checksum(const CANPacket_t *msg) {
   int len = GET_LEN(msg);
   uint8_t checksum = (uint8_t)(msg->addr) + (uint8_t)((unsigned int)(msg->addr) >> 8U) + (uint8_t)(len);
@@ -397,6 +404,12 @@ static bool toyota_tx_hook(const CANPacket_t *msg) {
     }
   }
 
+  // sunnypilot: arm the forwarding watchdog only on accepted automatic brake hold transmissions
+  if (toyota_auto_brake_hold && tx && (msg->bus == 0U) && (msg->addr == 0x344U) && (GET_LEN(msg) == 8U)) {
+    toyota_brake_hold_tx_seen = true;
+    toyota_brake_hold_tx_ts = microsecond_timer_get();
+  }
+
   return tx;
 }
 
@@ -432,6 +445,7 @@ static safety_config toyota_init(uint16_t param) {
 
   const uint16_t TOYOTA_PARAM_SP_UNSUPPORTED_DSU = 1;
   const uint16_t TOYTOA_PARAM_SP_GAS_INTERCEPTOR = 2;
+  const uint16_t TOYOTA_PARAM_SP_AUTO_BRAKE_HOLD = 4;
 
 #ifdef ALLOW_DEBUG
   const uint32_t TOYOTA_PARAM_SECOC = 8UL << TOYOTA_PARAM_OFFSET;
@@ -445,10 +459,14 @@ static safety_config toyota_init(uint16_t param) {
 
   const bool toyota_unsupported_dsu = GET_FLAG(current_safety_param_sp, TOYOTA_PARAM_SP_UNSUPPORTED_DSU);
   enable_gas_interceptor = GET_FLAG(current_safety_param_sp, TOYTOA_PARAM_SP_GAS_INTERCEPTOR);
+  toyota_auto_brake_hold = GET_FLAG(current_safety_param_sp, TOYOTA_PARAM_SP_AUTO_BRAKE_HOLD);
+  toyota_brake_hold_tx_seen = false;
+  toyota_brake_hold_tx_ts = 0U;
 
   // gas interceptor should not be used if openpilot is not controlling longitudinal or is a TSK car
   if (toyota_stock_longitudinal || toyota_secoc) {
     enable_gas_interceptor = false;
+    toyota_auto_brake_hold = false;
   }
 
   safety_config ret;
@@ -566,10 +584,23 @@ static safety_config toyota_init(uint16_t param) {
   return ret;
 }
 
+// sunnypilot: block the camera's PRE_COLLISION_2 only while the host's replacement is fresh
+static bool toyota_fwd_hook(int bus_num, int addr) {
+  bool block = false;
+
+  if (toyota_auto_brake_hold && toyota_brake_hold_tx_seen && (bus_num == 2) && (addr == 0x344)) {
+    const uint32_t elapsed = safety_get_ts_elapsed(microsecond_timer_get(), toyota_brake_hold_tx_ts);
+    block = elapsed <= TOYOTA_BRAKE_HOLD_TX_TIMEOUT;
+  }
+
+  return block;
+}
+
 const safety_hooks toyota_hooks = {
   .init = toyota_init,
   .rx = toyota_rx_hook,
   .tx = toyota_tx_hook,
+  .fwd = toyota_fwd_hook,
   .get_checksum = toyota_get_checksum,
   .compute_checksum = toyota_compute_checksum,
   .get_quality_flag_valid = toyota_get_quality_flag_valid,
