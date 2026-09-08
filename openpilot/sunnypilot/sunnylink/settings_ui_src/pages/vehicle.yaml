@@ -101,3 +101,18 @@ sections:
     - type: param
       key: ToyotaEnforceStockLongitudinal
       equals: false
+  - key: ToyotaAutoHold
+    widget: toggle
+    needs_onroad_cycle: true
+    title: Automatic Brake Hold
+    description: Hold the brake pedal for 500 ms once the vehicle has come to a stop to engage brake hold. Pressing the accelerator,
+      vehicle movement, engaging ACC, turning cruise main off, or shifting into park or reverse releases it. This is an alpha
+      feature. Use at your own risk.
+    enablement:
+    - $ref: '#/macros/not_engaged'
+    - type: capability
+      field: toyota_auto_brake_hold_available
+      equals: true
+    - type: param
+      key: ToyotaEnforceStockLongitudinal
+      equals: false
