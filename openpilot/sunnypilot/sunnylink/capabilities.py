@@ -11,6 +11,7 @@ from opendbc.car.structs import car
 from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, UNSUPPORTED_LONGITUDINAL_CAR
 from opendbc.car.subaru.values import CAR as SUBARU_CAR, SubaruFlags
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
+from opendbc.sunnypilot.car.toyota.auto_brake_hold import is_auto_brake_hold_available
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE
@@ -42,6 +43,7 @@ CAPABILITY_FIELDS = (
   "device_type",
   "subaru_has_sng",
   "hyundai_alpha_long_available",
+  "toyota_auto_brake_hold_available",
 )
 
 CAPABILITY_LABELS: dict[str, str] = {
@@ -64,6 +66,7 @@ CAPABILITY_LABELS: dict[str, str] = {
   "device_type": "Device type",
   "subaru_has_sng": "Subaru Stop-and-Go available",
   "hyundai_alpha_long_available": "Hyundai Alpha Longitudinal available",
+  "toyota_auto_brake_hold_available": "Toyota Automatic Brake Hold available",
 }
 
 # Explicit defaults for non-boolean capability fields
@@ -97,6 +100,13 @@ def _resolve_brand_capabilities(caps: dict, bundle_platform: str, CP) -> None:
         cloudlog.exception(f"capabilities: unknown hyundai platform {bundle_platform!r}")
     elif CP is not None:
       caps["hyundai_alpha_long_available"] = bool(CP.alphaLongitudinalAvailable)
+
+  elif brand == "toyota":
+    # PRE_COLLISION_2 is only known to have this layout on camera-ACC TSS2/LSS2 platforms, and the
+    # controller can only replace it while sunnypilot owns longitudinal. A platform bundle cannot
+    # answer the longitudinal question, so this stays false until the car has been fingerprinted.
+    if CP is not None:
+      caps["toyota_auto_brake_hold_available"] = is_auto_brake_hold_available(CP)
 
   elif brand == "subaru":
     if bundle_platform:

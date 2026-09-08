@@ -4,6 +4,7 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+from opendbc.sunnypilot.car.toyota.auto_brake_hold import is_auto_brake_hold_available
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
@@ -15,6 +16,8 @@ from openpilot.system.ui.sunnypilot.widgets.list_view import toggle_item_sp
 
 ONROAD_ONLY_DESCRIPTION = tr_noop("Start the vehicle to check vehicle compatibility.")
 SNG_HACK_UNAVAILABLE = tr_noop("sunnypilot Longitudinal Control must be available and enabled for your vehicle to use this feature.")
+AUTO_BRAKE_HOLD_UNAVAILABLE = tr_noop("This feature is only available on Toyota/Lexus vehicles with camera based ACC (TSS2/LSS2), " +
+                                      "and requires sunnypilot Longitudinal Control to be available and enabled for your vehicle.")
 
 DESCRIPTIONS = {
   'enforce_stock_longitudinal': tr_noop(
@@ -23,6 +26,11 @@ DESCRIPTIONS = {
   'stop_and_go_hack': tr_noop(
     'sunnypilot will allow some Toyota/Lexus cars to auto resume during stop and go traffic. ' +
     'This feature is only applicable to certain models that are able to use longitudinal control. This is an alpha feature. Use at your own risk.'
+  ),
+  'auto_brake_hold': tr_noop(
+    'Hold the brake pedal for 500 ms once the vehicle has come to a stop to engage brake hold. ' +
+    'Pressing the accelerator, vehicle movement, engaging ACC, turning cruise main off, or shifting into park or reverse releases it. ' +
+    'This is an alpha feature. Use at your own risk.'
   )
 }
 
@@ -47,9 +55,18 @@ class ToyotaSettings(BrandSettings):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self.auto_brake_hold = toggle_item_sp(
+      lambda: tr("Automatic Brake Hold"),
+      description=lambda: tr(DESCRIPTIONS["auto_brake_hold"]),
+      initial_state=ui_state.params.get_bool("ToyotaAutoHold"),
+      callback=self._on_enable_auto_brake_hold,
+      enabled=lambda: not ui_state.engaged,
+    )
+
     self.items = [
       self.enforce_stock_longitudinal,
       self.stop_and_go_hack,
+      self.auto_brake_hold,
     ]
 
   def _on_enable_enforce_stock_longitudinal(self, state: bool):
@@ -61,6 +78,8 @@ class ToyotaSettings(BrandSettings):
             ui_state.params.put_bool("AlphaLongitudinalEnabled", False)
           ui_state.params.put_bool("ToyotaStopAndGoHack", False)
           self.stop_and_go_hack.action_item.set_state(False)
+          ui_state.params.put_bool("ToyotaAutoHold", False)
+          self.auto_brake_hold.action_item.set_state(False)
           ui_state.params.put_bool("OnroadCycleRequested", True)
         else:
           self.enforce_stock_longitudinal.action_item.set_state(False)
@@ -94,28 +113,59 @@ class ToyotaSettings(BrandSettings):
       ui_state.params.put_bool("ToyotaStopAndGoHack", False)
       ui_state.params.put_bool("OnroadCycleRequested", True)
 
+  def _on_enable_auto_brake_hold(self, state: bool):
+    if state:
+      def confirm_callback(result: int):
+        if result == DialogResult.CONFIRM:
+          ui_state.params.put_bool("ToyotaAutoHold", True)
+          ui_state.params.put_bool("OnroadCycleRequested", True)
+        else:
+          self.auto_brake_hold.action_item.set_state(False)
+
+      content = (f"<h1>{self.auto_brake_hold.title}</h1><br>" +
+                 f"<p>{self.auto_brake_hold.description}</p>")
+
+      dlg = ConfirmDialog(content, tr("Enable"), rich=True, callback=confirm_callback)
+      gui_app.push_widget(dlg)
+
+    else:
+      ui_state.params.put_bool("ToyotaAutoHold", False)
+      ui_state.params.put_bool("OnroadCycleRequested", True)
+
+  @staticmethod
+  def _update_description(item, description: str, unavailable_reason: str) -> None:
+    new_desc = ("<b>" + unavailable_reason + "</b>\n\n" + description) if unavailable_reason else description
+    if item.description != new_desc:
+      item.set_description(new_desc)
+      if unavailable_reason:
+        item.show_description(True)
+
   def update_settings(self):
     if ui_state.CP is not None:
       longitudinal = ui_state.CP.openpilotLongitudinalControl
       enforce_stock = self.enforce_stock_longitudinal.action_item.get_state()
 
-      if longitudinal and not enforce_stock:
-        self.stop_and_go_hack.action_item.set_enabled(not ui_state.engaged)
-        new_desc = tr(DESCRIPTIONS["stop_and_go_hack"])
-        show_desc = False
-      else:
-        self.stop_and_go_hack.action_item.set_enabled(False)
+      sng_available = longitudinal and not enforce_stock
+      self.stop_and_go_hack.action_item.set_enabled(sng_available and not ui_state.engaged)
+      if not sng_available:
         self.stop_and_go_hack.action_item.set_state(False)
-        new_desc = "<b>" + tr(SNG_HACK_UNAVAILABLE) + "</b>\n\n" + tr(DESCRIPTIONS["stop_and_go_hack"])
-        show_desc = True
+      self._update_description(self.stop_and_go_hack, tr(DESCRIPTIONS["stop_and_go_hack"]),
+                               "" if sng_available else tr(SNG_HACK_UNAVAILABLE))
 
-      if self.stop_and_go_hack.description != new_desc:
-        self.stop_and_go_hack.set_description(new_desc)
-        if show_desc:
-          self.stop_and_go_hack.show_description(True)
+      # auto brake hold commands the vehicle's pre-collision braking, so clear it outright on
+      # platforms that cannot support it rather than leaving a stale param behind
+      auto_brake_hold_available = is_auto_brake_hold_available(ui_state.CP) and not enforce_stock
+      self.auto_brake_hold.action_item.set_enabled(auto_brake_hold_available and not ui_state.engaged)
+      if not auto_brake_hold_available:
+        self.auto_brake_hold.action_item.set_state(False)
+        if ui_state.params.get_bool("ToyotaAutoHold"):
+          ui_state.params.put_bool("ToyotaAutoHold", False)
+      self._update_description(self.auto_brake_hold, tr(DESCRIPTIONS["auto_brake_hold"]),
+                               "" if auto_brake_hold_available else tr(AUTO_BRAKE_HOLD_UNAVAILABLE))
     else:
+      # compatibility is unknown offroad: disable the toggles but keep whatever the user stored
       self.stop_and_go_hack.action_item.set_enabled(False)
-      new_desc = "<b>" + tr(ONROAD_ONLY_DESCRIPTION) + "</b>\n\n" + tr(DESCRIPTIONS["stop_and_go_hack"])
-      if self.stop_and_go_hack.description != new_desc:
-        self.stop_and_go_hack.set_description(new_desc)
-        self.stop_and_go_hack.show_description(True)
+      self._update_description(self.stop_and_go_hack, tr(DESCRIPTIONS["stop_and_go_hack"]), tr(ONROAD_ONLY_DESCRIPTION))
+
+      self.auto_brake_hold.action_item.set_enabled(False)
+      self._update_description(self.auto_brake_hold, tr(DESCRIPTIONS["auto_brake_hold"]), tr(ONROAD_ONLY_DESCRIPTION))

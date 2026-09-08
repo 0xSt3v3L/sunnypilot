@@ -287,6 +287,13 @@ class TestKnownVehicleSettings(OpenpilotTestCase):
     assert "ToyotaEnforceStockLongitudinal" in keys
     assert "ToyotaStopAndGoHack" in keys
 
+  def test_toyota_has_auto_brake_hold(self, schema):
+    keys = {i["key"] for i in _brand_items(schema["vehicle_settings"].get("toyota"))}
+    assert "ToyotaAutoHold" in keys
+
+  def test_toyota_auto_brake_hold_defaults_off(self):
+    assert Params().get_bool("ToyotaAutoHold") is False
+
   def test_tesla_has_coop_steering(self, schema):
     keys = {i["key"] for i in _brand_items(schema["vehicle_settings"].get("tesla"))}
     assert "TeslaCoopSteering" in keys
