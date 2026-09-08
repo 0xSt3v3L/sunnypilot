@@ -73,7 +73,6 @@ static int toyota_dbc_eps_torque_factor = 100;   // conversion factor for STEER_
 
 // sunnypilot: automatic brake hold reconstructs PRE_COLLISION_2 (0x344) on bus 0, so the camera's
 // copy is only blocked while the host keeps transmitting. Forwarding fails open after the timeout.
-const uint32_t TOYOTA_BRAKE_HOLD_TX_TIMEOUT = 100000U;  // 100ms, the host sends every 20ms
 static bool toyota_auto_brake_hold = false;
 static bool toyota_brake_hold_tx_seen = false;
 static uint32_t toyota_brake_hold_tx_ts = 0U;
@@ -586,6 +585,8 @@ static safety_config toyota_init(uint16_t param) {
 
 // sunnypilot: block the camera's PRE_COLLISION_2 only while the host's replacement is fresh
 static bool toyota_fwd_hook(int bus_num, int addr) {
+  const uint32_t TOYOTA_BRAKE_HOLD_TX_TIMEOUT = 100000U;  // 100ms, the host sends every 20ms
+
   bool block = false;
 
   if (toyota_auto_brake_hold && toyota_brake_hold_tx_seen && (bus_num == 2) && (addr == 0x344)) {
