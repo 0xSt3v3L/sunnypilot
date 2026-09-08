@@ -8,6 +8,7 @@ See the LICENSE.md file in the root directory for more details.
 
 from collections.abc import Callable
 import os
+import sys
 os.environ['GMMU'] = '0'
 import numpy as np
 import threading
@@ -54,6 +55,7 @@ from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
+from openpilot.sunnypilot.modeld_v2.chestnut_recovery import decide_recovery, is_controlling, RECOVERY_RESTART, RECOVERY_GIVE_UP
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
 BIG_MODEL_TIMEOUT = 60
@@ -398,6 +400,7 @@ def main(demo=False):
   frame_id = 0
   last_vipc_frame_id = 0
   run_count = 0
+  recovery_pending = False  # set when the big model falls back; drives chestnut auto-recovery
 
   model_transform_main = np.zeros((3, 3), dtype=np.float32)
   model_transform_extra = np.zeros((3, 3), dtype=np.float32)
@@ -527,8 +530,24 @@ def main(demo=False):
         chestnut_state.big = False
       run_count = 0
       model_output = None
+      recovery_pending = True
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
+
+    # Chestnut auto-recovery: after a big-model fallback, reload it by restarting modeld once safe
+    # (openpilot not controlling). The manager respawns modeld with a fresh USB/GPU device open.
+    if recovery_pending:
+      engaged = is_controlling(sm.alive['carControl'], sm['carControl'].latActive, sm['carControl'].longActive)
+      attempts = params.get("ChestnutRecoveryCount", return_default=True)
+      action = decide_recovery(recovery_pending, engaged, attempts)
+      if action == RECOVERY_RESTART:
+        params.put("ChestnutRecoveryCount", attempts + 1)
+        params.put_bool("ChestnutLoading", True)
+        cloudlog.warning("chestnut auto-recovery: restarting modeld to reload big model (attempt %d)", attempts + 1)
+        sys.exit(0)
+      elif action == RECOVERY_GIVE_UP:
+        recovery_pending = False
+        cloudlog.warning("chestnut auto-recovery: attempt budget exhausted, staying on small model")
 
     if model_output is not None:
       modelv2_send = messaging.new_message('modelV2')
