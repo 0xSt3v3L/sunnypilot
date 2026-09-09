@@ -24,7 +24,7 @@ class CarSpecificEventsSP:
 
     self.low_speed_alert = False
 
-  def update(self, CS: structs.CarState, events: Events):
+  def update(self, CS: structs.CarState, CS_SP: custom.CarStateSP, events: Events):
     events_sp = EventsSP()
 
     if self.CP.brand == 'chrysler':
@@ -47,5 +47,9 @@ class CarSpecificEventsSP:
         if CS.cruiseState.standstill and not CS.brakePressed and self.CP_SP.enableGasInterceptor:
           if events.has(EventName.resumeRequired):
             events.remove(EventName.resumeRequired)
+
+      # automatic brake hold is not the factory hold, so CS.brakeHoldActive never reports it
+      if CS_SP.autoBrakeHoldActive:
+        events_sp.add(EventNameSP.autoBrakeHold)
 
     return events_sp
