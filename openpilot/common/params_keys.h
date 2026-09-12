@@ -238,6 +238,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TeslaCoopSteering", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaMadsScreenButton", {PERSISTENT | BACKUP, INT, "0"}},
     {"ToyotaAutoHold", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"ToyotaAutoLockBySpeed", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"ToyotaAutoUnlockByShifter", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaEnforceStockLongitudinal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"ToyotaStopAndGoHack", {PERSISTENT | BACKUP, BOOL, "0"}},
 

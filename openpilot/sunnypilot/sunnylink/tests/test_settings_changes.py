@@ -168,6 +168,24 @@ class TestToyotaAutoBrakeHoldGates(OpenpilotTestCase):
     item = _find_item(schema, "ToyotaAutoHold")
     assert item is not None, "ToyotaAutoHold not found in schema"
     assert item.get("needs_onroad_cycle") is True
+class TestToyotaAutoDoorLockGates(OpenpilotTestCase):
+  """Door locking works on any Toyota regardless of longitudinal, so engagement is the only gate."""
+
+  KEYS = ("ToyotaAutoLockBySpeed", "ToyotaAutoUnlockByShifter")
+
+  def test_gated_only_on_engagement(self, schema):
+    for key in self.KEYS:
+      item = _find_item(schema, key)
+      assert item is not None, f"{key} not found in schema"
+      rules = (item.get("visibility") or []) + (item.get("enablement") or [])
+      assert any(r.get("type") == "not_engaged" for r in rules), f"{key} must be gated on not_engaged"
+      assert not [r for r in rules if r.get("type") == "param"], f"{key} must not depend on other params"
+
+  def test_requests_onroad_cycle(self, schema):
+    for key in self.KEYS:
+      item = _find_item(schema, key)
+      assert item is not None, f"{key} not found in schema"
+      assert item.get("needs_onroad_cycle") is True
 
 
 class TestValidator(OpenpilotTestCase):
@@ -230,6 +248,8 @@ class TestNotEngagedReplacement(OpenpilotTestCase):
     "ToyotaEnforceStockLongitudinal",
     "ToyotaStopAndGoHack",
     "ToyotaAutoHold",
+    "ToyotaAutoLockBySpeed",
+    "ToyotaAutoUnlockByShifter",
   ], names=["key"])
   def test_offroad_only_replaced_with_not_engaged(self, schema, key):
     """These items should use not_engaged, not offroad_only."""

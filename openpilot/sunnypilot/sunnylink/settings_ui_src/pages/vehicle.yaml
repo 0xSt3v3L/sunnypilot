@@ -116,3 +116,18 @@ sections:
     - type: param
       key: ToyotaEnforceStockLongitudinal
       equals: false
+  - key: ToyotaAutoLockBySpeed
+    widget: toggle
+    needs_onroad_cycle: true
+    title: Automatic Door Lock
+    description: Lock the doors once the vehicle passes 20 km/h in drive. This happens once per trip, so the doors can still
+      be unlocked by hand afterwards. Shifting into park re-arms it for the next trip. Nothing is sent while a door is open.
+    enablement:
+    - $ref: '#/macros/not_engaged'
+  - key: ToyotaAutoUnlockByShifter
+    widget: toggle
+    needs_onroad_cycle: true
+    title: Automatic Door Unlock
+    description: Unlock the doors when shifting into park. Nothing is sent while a door is open.
+    enablement:
+    - $ref: '#/macros/not_engaged'

@@ -293,6 +293,14 @@ class TestKnownVehicleSettings(OpenpilotTestCase):
 
   def test_toyota_auto_brake_hold_defaults_off(self):
     assert Params().get_bool("ToyotaAutoHold") is False
+  def test_toyota_has_automatic_door_locking(self, schema):
+    keys = {i["key"] for i in _brand_items(schema["vehicle_settings"].get("toyota"))}
+    assert "ToyotaAutoLockBySpeed" in keys
+    assert "ToyotaAutoUnlockByShifter" in keys
+
+  def test_toyota_automatic_door_locking_defaults_off(self):
+    assert Params().get_bool("ToyotaAutoLockBySpeed") is False
+    assert Params().get_bool("ToyotaAutoUnlockByShifter") is False
 
   def test_tesla_has_coop_steering(self, schema):
     keys = {i["key"] for i in _brand_items(schema["vehicle_settings"].get("tesla"))}
