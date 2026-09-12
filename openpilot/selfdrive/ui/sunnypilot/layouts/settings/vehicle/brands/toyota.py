@@ -31,6 +31,13 @@ DESCRIPTIONS = {
     'Hold the brake pedal for 500 ms once the vehicle has come to a stop to engage brake hold. ' +
     'Pressing the accelerator, vehicle movement, engaging ACC, turning cruise main off, or shifting into park or reverse releases it. ' +
     'This is an alpha feature. Use at your own risk.'
+  ),
+  'auto_lock_by_speed': tr_noop(
+    'Lock the doors once the vehicle passes 20 km/h in drive. This happens once per trip, so the doors can still be unlocked by hand afterwards. ' +
+    'Shifting into park re-arms it for the next trip. Nothing is sent while a door is open.'
+  ),
+  'auto_unlock_by_shifter': tr_noop(
+    'Unlock the doors when shifting into park. Nothing is sent while a door is open.'
   )
 }
 
@@ -63,10 +70,28 @@ class ToyotaSettings(BrandSettings):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self.auto_lock_by_speed = toggle_item_sp(
+      lambda: tr("Automatic Door Lock"),
+      description=lambda: tr(DESCRIPTIONS["auto_lock_by_speed"]),
+      initial_state=ui_state.params.get_bool("ToyotaAutoLockBySpeed"),
+      callback=self._on_enable_auto_lock_by_speed,
+      enabled=lambda: not ui_state.engaged,
+    )
+
+    self.auto_unlock_by_shifter = toggle_item_sp(
+      lambda: tr("Automatic Door Unlock"),
+      description=lambda: tr(DESCRIPTIONS["auto_unlock_by_shifter"]),
+      initial_state=ui_state.params.get_bool("ToyotaAutoUnlockByShifter"),
+      callback=self._on_enable_auto_unlock_by_shifter,
+      enabled=lambda: not ui_state.engaged,
+    )
+
     self.items = [
       self.enforce_stock_longitudinal,
       self.stop_and_go_hack,
       self.auto_brake_hold,
+      self.auto_lock_by_speed,
+      self.auto_unlock_by_shifter,
     ]
 
   def _on_enable_enforce_stock_longitudinal(self, state: bool):
@@ -131,6 +156,14 @@ class ToyotaSettings(BrandSettings):
     else:
       ui_state.params.put_bool("ToyotaAutoHold", False)
       ui_state.params.put_bool("OnroadCycleRequested", True)
+
+  def _on_enable_auto_lock_by_speed(self, state: bool):
+    ui_state.params.put_bool("ToyotaAutoLockBySpeed", state)
+    ui_state.params.put_bool("OnroadCycleRequested", True)
+
+  def _on_enable_auto_unlock_by_shifter(self, state: bool):
+    ui_state.params.put_bool("ToyotaAutoUnlockByShifter", state)
+    ui_state.params.put_bool("OnroadCycleRequested", True)
 
   @staticmethod
   def _update_description(item, description: str, unavailable_reason: str) -> None:
