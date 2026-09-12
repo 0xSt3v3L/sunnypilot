@@ -153,6 +153,23 @@ class TestTestManeuversSection(OpenpilotTestCase):
       "test_maneuvers must gate ShowAdvancedControls via enablement"
 
 
+class TestToyotaAutoBrakeHoldGates(OpenpilotTestCase):
+  """Automatic brake hold commands braking, so it must stay gated to compatible camera-ACC platforms."""
+
+  def test_gated_on_platform_capability_and_stock_longitudinal(self, schema):
+    item = _find_item(schema, "ToyotaAutoHold")
+    assert item is not None, "ToyotaAutoHold not found in schema"
+    rules = (item.get("visibility") or []) + (item.get("enablement") or [])
+    assert _references_capability_field(rules, "toyota_auto_brake_hold_available")
+    param_rules = {(r.get("key"), r.get("equals")) for r in rules if r.get("type") == "param"}
+    assert ("ToyotaEnforceStockLongitudinal", False) in param_rules
+
+  def test_requests_onroad_cycle(self, schema):
+    item = _find_item(schema, "ToyotaAutoHold")
+    assert item is not None, "ToyotaAutoHold not found in schema"
+    assert item.get("needs_onroad_cycle") is True
+
+
 class TestValidator(OpenpilotTestCase):
   def test_validator_accepts_real_json(self):
     """settings_ui.json validates against settings_ui.schema.json."""
@@ -212,6 +229,7 @@ class TestNotEngagedReplacement(OpenpilotTestCase):
     "AlphaLongitudinalEnabled",
     "ToyotaEnforceStockLongitudinal",
     "ToyotaStopAndGoHack",
+    "ToyotaAutoHold",
   ], names=["key"])
   def test_offroad_only_replaced_with_not_engaged(self, schema, key):
     """These items should use not_engaged, not offroad_only."""

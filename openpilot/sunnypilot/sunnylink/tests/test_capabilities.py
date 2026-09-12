@@ -20,7 +20,10 @@ from openpilot.sunnypilot.sunnylink.capabilities import (
   PROTOCOL_VERSION,
   generate_capabilities,
 )
+from openpilot.common.params import Params
 from openpilot.common.test import OpenpilotTestCase
+from opendbc.car.toyota.values import ToyotaFlags
+from opendbc.car.structs import car
 
 
 KNOWN_PROTOCOL_VERSIONS = (1,)
@@ -74,6 +77,53 @@ class TestOpaquePerBrandFlags(OpenpilotTestCase):
 
   def test_hyundai_alpha_long_available_default_false(self, caps):
     assert caps["hyundai_alpha_long_available"] is False
+
+
+def _write_toyota_car_params(flags: ToyotaFlags, openpilot_longitudinal: bool) -> dict:
+  CP = car.CarParams.new_message()
+  CP.brand = "toyota"
+  CP.flags = int(flags)
+  CP.openpilotLongitudinalControl = openpilot_longitudinal
+
+  params = Params()
+  params.put("CarParamsPersistent", CP.to_bytes(), block=True)
+  return generate_capabilities(params)
+
+
+class TestToyotaAutoBrakeHoldCapability(OpenpilotTestCase):
+  """
+  Automatic brake hold reconstructs the camera's PRE_COLLISION_2, which only exists in the
+  known layout on camera-ACC TSS2/LSS2 platforms running sunnypilot longitudinal control.
+  """
+
+  def test_field_present(self):
+    assert "toyota_auto_brake_hold_available" in CAPABILITY_FIELDS
+
+  def test_field_has_label(self):
+    assert "toyota_auto_brake_hold_available" in CAPABILITY_LABELS
+
+  def test_unavailable_without_car_params(self, caps):
+    assert caps["toyota_auto_brake_hold_available"] is False
+
+  def test_camera_acc_tss2_is_available(self):
+    caps = _write_toyota_car_params(ToyotaFlags.TSS2, True)
+    assert caps["toyota_auto_brake_hold_available"] is True
+
+  def test_radar_acc_is_unavailable(self):
+    caps = _write_toyota_car_params(ToyotaFlags.TSS2 | ToyotaFlags.RADAR_ACC, True)
+    assert caps["toyota_auto_brake_hold_available"] is False
+
+  def test_secoc_is_unavailable(self):
+    caps = _write_toyota_car_params(ToyotaFlags.TSS2 | ToyotaFlags.SECOC, True)
+    assert caps["toyota_auto_brake_hold_available"] is False
+
+  def test_factory_longitudinal_is_unavailable(self):
+    caps = _write_toyota_car_params(ToyotaFlags.TSS2, False)
+    assert caps["toyota_auto_brake_hold_available"] is False
+
+  def test_non_tss2_is_unavailable(self):
+    caps = _write_toyota_car_params(ToyotaFlags(0), True)
+    assert caps["toyota_auto_brake_hold_available"] is False
 
 
 class TestCapabilitiesShape(OpenpilotTestCase):
