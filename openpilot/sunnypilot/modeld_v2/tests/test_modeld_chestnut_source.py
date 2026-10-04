@@ -63,6 +63,32 @@ class TestModeldChestnutSource(unittest.TestCase):
     # ChestnutActive is written non-blocking in this same handler, so a read here can be stale
     self.assertNotIn("get_bool('ChestnutActive')", ast.unparse(self._fallback_handler()))
 
+  def _small_model_assign(self) -> tuple[list[ast.stmt], int]:
+    body = _main_body(_parse())
+    for i, node in enumerate(body):
+      if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == ['small_model']:
+        return body, i
+    self.fail('small_model assignment not found in main()')
+
+  def test_small_model_warmed_up_right_after_creation(self):
+    body, i = self._small_model_assign()
+    nxt = body[i + 1]
+    self.assertIsInstance(nxt, ast.If)
+    self.assertEqual(ast.unparse(nxt.test), 'small_model is not None')
+    self.assertIn('small_model.warmup()', ast.unparse(nxt))
+
+  def test_small_model_warmup_failure_only_fatal_without_big_model(self):
+    body, i = self._small_model_assign()
+    tries = [n for n in ast.walk(body[i + 1]) if isinstance(n, ast.Try)]
+    self.assertEqual(len(tries), 1)
+    handler = tries[0].handlers[0]
+    self.assertEqual(ast.unparse(handler.type), 'Exception')
+    guard = handler.body[0]
+    self.assertIsInstance(guard, ast.If)
+    self.assertEqual(ast.unparse(guard.test), 'model is None')
+    self.assertIsInstance(guard.body[0], ast.Raise)
+    self.assertIn("cloudlog.exception('small model warmup failed')", ast.unparse(handler))
+
 
 if __name__ == '__main__':
   unittest.main()
