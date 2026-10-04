@@ -81,6 +81,9 @@ class TestModeldChestnutSource(unittest.TestCase):
     body, i = self._small_model_assign()
     tries = [n for n in ast.walk(body[i + 1]) if isinstance(n, ast.Try)]
     self.assertEqual(len(tries), 1)
+    try_body = '\n'.join(ast.unparse(s) for s in tries[0].body)
+    self.assertIn('small_model.warmup()', try_body)
+    self.assertIn('small model warmed up in', try_body)
     handler = tries[0].handlers[0]
     self.assertEqual(ast.unparse(handler.type), 'Exception')
     guard = handler.body[0]
