@@ -47,6 +47,22 @@ class TestModeldChestnutSource(unittest.TestCase):
     first_import = next(i for i, n in enumerate(body) if _is_third_party_import(n))
     self.assertLess(idx, first_import, "tinygrad caches getenv, so the default must precede third-party imports")
 
+  def _fallback_handler(self) -> ast.ExceptHandler:
+    for node in ast.walk(_parse()):
+      if isinstance(node, ast.ExceptHandler) and 'chestnut failed, falling back to small' in ast.unparse(node):
+        return node
+    self.fail('chestnut fallback handler not found')
+
+  def test_fallback_decides_on_model_chestnut(self):
+    first = self._fallback_handler().body[0]
+    self.assertIsInstance(first, ast.If)
+    self.assertEqual(ast.unparse(first.test), 'not model.chestnut')
+    self.assertIsInstance(first.body[0], ast.Raise)
+
+  def test_fallback_does_not_read_chestnut_active_param(self):
+    # ChestnutActive is written non-blocking in this same handler, so a read here can be stale
+    self.assertNotIn("get_bool('ChestnutActive')", ast.unparse(self._fallback_handler()))
+
 
 if __name__ == '__main__':
   unittest.main()
