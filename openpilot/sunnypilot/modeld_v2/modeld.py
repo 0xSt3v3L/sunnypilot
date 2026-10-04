@@ -9,6 +9,7 @@ See the LICENSE.md file in the root directory for more details.
 from collections.abc import Callable
 import os
 os.environ['GMMU'] = '0'
+os.environ.setdefault('AM_POWER_LIMIT', '100')  # chestnut: 100 W PPT with dynamic clocks instead of pinned max clocks (commaai/openpilot#38992)
 import numpy as np
 import threading
 import time
