@@ -264,7 +264,7 @@ def main(demo=False):
 
   CHESTNUT = chestnut_present()
   if CHESTNUT:
-    os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
+    os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'  # read by the legacy runtime (HCQ2=0)
 
   params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
@@ -302,6 +302,9 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
+        from tinygrad.runtime.ops_amd import AMDDevice
+        AMDDevice.wait_timeout_ms = 3000  # read by hcq2, which ignores HCQDEV_WAIT_TIMEOUT_MS (commaai/openpilot#39012)
+        cloudlog.warning(f"chestnut runtime: {AMDDevice.__module__}")
         m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
         m.warmup()
         big_model = m

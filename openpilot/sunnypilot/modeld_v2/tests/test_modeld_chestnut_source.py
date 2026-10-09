@@ -103,6 +103,31 @@ class TestModeldChestnutSource(unittest.TestCase):
       self.assertEqual(with_path.returncode, 0, with_path.stderr)
       self.assertEqual(with_path.stdout.strip(), 'extra.hcq1.ops_amd_old')
 
+  def _load_big_try(self) -> ast.Try:
+    fn = next(n for n in ast.walk(_parse()) if isinstance(n, ast.FunctionDef) and n.name == 'load_big')
+    return next(n for n in fn.body if isinstance(n, ast.Try))
+
+  def test_amd_wait_timeout_set_inside_guarded_load(self):
+    # hcq2 ignores HCQDEV_WAIT_TIMEOUT_MS (commaai/openpilot#39012); inside the try, an import failure falls back to the small model
+    body = [ast.unparse(s) for s in self._load_big_try().body]
+    i_import = body.index('from tinygrad.runtime.ops_amd import AMDDevice')
+    i_set = body.index('AMDDevice.wait_timeout_ms = 3000')
+    i_load = next(i for i, s in enumerate(body) if 'ModelState(' in s)
+    self.assertLess(i_import, i_set)
+    self.assertLess(i_set, i_load)
+
+  def test_chestnut_runtime_logged_before_load(self):
+    body = [ast.unparse(s) for s in self._load_big_try().body]
+    i_log = next((i for i, s in enumerate(body) if 'chestnut runtime: ' in s and 'AMDDevice.__module__' in s), None)
+    self.assertIsNotNone(i_log, 'load_big must log which AMD runtime was imported')
+    self.assertTrue(body[i_log].startswith('cloudlog.warning('))
+    self.assertLess(i_log, next(i for i, s in enumerate(body) if 'ModelState(' in s))
+
+  def test_legacy_wait_timeout_env_kept(self):
+    # the legacy runtime (HCQ2=0) still reads HCQDEV_WAIT_TIMEOUT_MS (extra/hcq1/hcq.py)
+    main = '\n'.join(ast.unparse(s) for s in _main_body(_parse()))
+    self.assertIn("os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'", main)
+
 
 if __name__ == '__main__':
   unittest.main()
