@@ -76,6 +76,14 @@ class _FakeRegistry:
     return self.devices[name]
 
 
+class _GrowingRegistry(_FakeRegistry):
+  # another thread opens a device while drop_chestnut iterates (the loader keeps running after a join timeout)
+  def __getitem__(self, name):
+    self.devices.setdefault('DISK', _FakeDevice())
+    self._opened_devices.add('DISK')
+    return super().__getitem__(name)
+
+
 class _FakeLog:
   def __init__(self):
     self.exceptions = []
@@ -191,6 +199,14 @@ class TestModeldChestnutSource(unittest.TestCase):
     _load_function('drop_chestnut', Device=_FakeRegistry({'AMD': amd, 'QCOM': qcom, 'CPU': cpu}), cloudlog=_FakeLog())()
     self.assertEqual(qcom.pending, {cpu: 3})
     self.assertEqual(cpu.pending, {})
+
+  def test_drop_chestnut_tolerates_devices_opened_concurrently(self):
+    amd, qcom = _FakeDevice(), _FakeDevice()
+    qcom.pending[amd] = 7
+    log = _FakeLog()
+    _load_function('drop_chestnut', Device=_GrowingRegistry({'AMD': amd, 'QCOM': qcom}), cloudlog=log)()
+    self.assertEqual(log.exceptions, [])
+    self.assertEqual(qcom.pending, {})
 
   def test_drop_chestnut_never_raises(self):
     # it runs inside the fallback handler; raising there would kill modeld instead of falling back

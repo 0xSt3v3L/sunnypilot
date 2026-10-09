@@ -82,7 +82,7 @@ def drop_chestnut() -> None:
   # a dead chestnut left in another device's pending makes that device's next sync hang (commaai/openpilot#39044)
   try:
     if "AMD" in Device._opened_devices:
-      for d in Device._opened_devices:
+      for d in tuple(Device._opened_devices):  # the loader thread may still open devices after a join timeout
         Device[d].pending.pop(Device["AMD"], None)
   except Exception:
     cloudlog.exception("drop chestnut failed")
