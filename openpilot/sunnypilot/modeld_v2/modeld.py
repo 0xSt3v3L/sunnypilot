@@ -9,6 +9,12 @@ See the LICENSE.md file in the root directory for more details.
 from collections.abc import Callable
 import os
 os.environ['GMMU'] = '0'
+os.environ.setdefault('AM_POWER_LIMIT', '100')  # chestnut: 100 W PPT with dynamic clocks instead of pinned max clocks (commaai/openpilot#38992)
+os.environ.setdefault('HCQ2', '0')  # chestnut: legacy AMD runtime raises on USB errors instead of spinning forever (tinygrad#18389)
+import sys
+from openpilot.common.basedir import BASEDIR
+if os.environ['HCQ2'] == '0':
+  sys.path.append(os.path.join(BASEDIR, 'tinygrad_repo'))  # legacy runtime imports extra.hcq1, which the device PYTHONPATH does not cover
 import numpy as np
 import threading
 import time
