@@ -330,6 +330,16 @@ def main(demo=False):
       drop_chestnut()
 
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
+  if small_model is not None:
+    # pay the slow first inference now instead of mid-drive when the big model falls back
+    warmup_st = time.monotonic()
+    try:
+      small_model.warmup()
+      cloudlog.warning(f"small model warmed up in {time.monotonic() - warmup_st:.2f}s")
+    except Exception:
+      if model is None:
+        raise
+      cloudlog.exception("small model warmup failed")
   if model is None:
     model = small_model
   params.put_bool("ChestnutLoading", False)

@@ -210,6 +210,35 @@ class TestModeldChestnutSource(unittest.TestCase):
     i_put = body.index("params.put_bool('ChestnutActive', model is not None)")
     self.assertEqual(body[i_put + 1], 'if model is None:\n    drop_chestnut()')
 
+  def _small_model_assign(self) -> tuple[list[ast.stmt], int]:
+    body = _main_body(_parse())
+    for i, node in enumerate(body):
+      if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == ['small_model']:
+        return body, i
+    self.fail('small_model assignment not found in main()')
+
+  def test_small_model_warmed_up_right_after_creation(self):
+    body, i = self._small_model_assign()
+    nxt = body[i + 1]
+    self.assertIsInstance(nxt, ast.If)
+    self.assertEqual(ast.unparse(nxt.test), 'small_model is not None')
+    self.assertIn('small_model.warmup()', ast.unparse(nxt))
+
+  def test_small_model_warmup_failure_only_fatal_without_big_model(self):
+    body, i = self._small_model_assign()
+    tries = [n for n in ast.walk(body[i + 1]) if isinstance(n, ast.Try)]
+    self.assertEqual(len(tries), 1)
+    try_body = '\n'.join(ast.unparse(s) for s in tries[0].body)
+    self.assertIn('small_model.warmup()', try_body)
+    self.assertIn('small model warmed up in', try_body)
+    handler = tries[0].handlers[0]
+    self.assertEqual(ast.unparse(handler.type), 'Exception')
+    guard = handler.body[0]
+    self.assertIsInstance(guard, ast.If)
+    self.assertEqual(ast.unparse(guard.test), 'model is None')
+    self.assertIsInstance(guard.body[0], ast.Raise)
+    self.assertIn("cloudlog.exception('small model warmup failed')", ast.unparse(handler))
+
 
 if __name__ == '__main__':
   unittest.main()
