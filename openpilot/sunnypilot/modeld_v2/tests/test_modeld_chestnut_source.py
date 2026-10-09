@@ -105,9 +105,10 @@ class TestModeldChestnutSource(unittest.TestCase):
   def test_power_limit_default_set_before_third_party_imports(self):
     self._assert_env_default_before_imports('AM_POWER_LIMIT', '100')
 
-  def test_hcq2_defaults_to_legacy_runtime_before_third_party_imports(self):
-    # HCQ2 is a tinygrad ContextVar read once at import time
-    self._assert_env_default_before_imports('HCQ2', '0')
+  def test_hcq2_defaults_to_hcq2_runtime_before_third_party_imports(self):
+    # HCQ2 is a tinygrad ContextVar read once at import time. The chestnut pkls embed hcq2 USB host programs,
+    # so the legacy runtime (HCQ2=0) cannot run them; HCQ2=0 stays available as an external override.
+    self._assert_env_default_before_imports('HCQ2', '1')
 
   def _legacy_path_if(self) -> tuple[int, ast.If]:
     for i, node in enumerate(_parse().body):

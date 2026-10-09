@@ -10,7 +10,7 @@ from collections.abc import Callable
 import os
 os.environ['GMMU'] = '0'
 os.environ.setdefault('AM_POWER_LIMIT', '100')  # chestnut: 100 W PPT with dynamic clocks instead of pinned max clocks (commaai/openpilot#38992)
-os.environ.setdefault('HCQ2', '0')  # chestnut: legacy AMD runtime raises on USB errors instead of spinning forever (tinygrad#18389)
+os.environ.setdefault('HCQ2', '1')  # chestnut pkls embed hcq2 USB host programs; HCQ2=0 (legacy runtime) cannot run them
 import sys
 from openpilot.common.basedir import BASEDIR
 if os.environ['HCQ2'] == '0':
