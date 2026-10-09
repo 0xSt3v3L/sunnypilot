@@ -50,6 +50,40 @@ def _is_third_party_import(node: ast.stmt, allowed: set[str] = STDLIB_MODULES) -
   return any(m not in allowed for m in _import_modules(node))
 
 
+def _load_function(name: str, **globs):
+  # compile one module-level function from modeld.py with stubbed globals
+  fn = next((n for n in _parse().body if isinstance(n, ast.FunctionDef) and n.name == name), None)
+  if fn is None:
+    raise AssertionError(f'{name}() not found at module level')
+  ns = dict(globs)
+  exec(compile(ast.Module(body=[fn], type_ignores=[]), str(MODELD_PATH), 'exec'), ns)
+  return ns[name]
+
+
+class _FakeDevice:
+  def __init__(self):
+    self.pending = {}
+
+
+class _FakeRegistry:
+  def __init__(self, devices, broken=False):
+    self.devices, self.broken = devices, broken
+    self._opened_devices = set(devices)
+
+  def __getitem__(self, name):
+    if self.broken:
+      raise RuntimeError('registry broken')
+    return self.devices[name]
+
+
+class _FakeLog:
+  def __init__(self):
+    self.exceptions = []
+
+  def exception(self, msg):
+    self.exceptions.append(msg)
+
+
 class TestModeldChestnutSource(unittest.TestCase):
   def _first_third_party_import(self, allowed: set[str] = STDLIB_MODULES) -> int:
     return next(i for i, n in enumerate(_parse().body) if _is_third_party_import(n, allowed))
@@ -143,6 +177,38 @@ class TestModeldChestnutSource(unittest.TestCase):
   def test_fallback_does_not_read_chestnut_active_param(self):
     # ChestnutActive is written non-blocking in this same handler, so a read here can be stale
     self.assertNotIn("get_bool('ChestnutActive')", ast.unparse(self._fallback_handler()))
+
+  def test_drop_chestnut_noop_without_amd(self):
+    qcom = _FakeDevice()
+    qcom.pending['x'] = 1
+    _load_function('drop_chestnut', Device=_FakeRegistry({'QCOM': qcom}), cloudlog=_FakeLog())()
+    self.assertEqual(qcom.pending, {'x': 1})
+
+  def test_drop_chestnut_removes_amd_from_every_pending(self):
+    amd, qcom, cpu = _FakeDevice(), _FakeDevice(), _FakeDevice()
+    qcom.pending.update({amd: 7, cpu: 3})
+    cpu.pending[amd] = 2
+    _load_function('drop_chestnut', Device=_FakeRegistry({'AMD': amd, 'QCOM': qcom, 'CPU': cpu}), cloudlog=_FakeLog())()
+    self.assertEqual(qcom.pending, {cpu: 3})
+    self.assertEqual(cpu.pending, {})
+
+  def test_drop_chestnut_never_raises(self):
+    # it runs inside the fallback handler; raising there would kill modeld instead of falling back
+    log = _FakeLog()
+    _load_function('drop_chestnut', Device=_FakeRegistry({'AMD': _FakeDevice()}, broken=True), cloudlog=log)()
+    self.assertEqual(log.exceptions, ['drop chestnut failed'])
+
+  def test_fallback_drops_chestnut_before_clearing_active(self):
+    body = [ast.unparse(s) for s in self._fallback_handler().body]
+    self.assertIn('drop_chestnut()', body)
+    self.assertLess(body.index('drop_chestnut()'), body.index("params.put_bool('ChestnutActive', False)"))
+
+  def test_failed_big_load_drops_chestnut(self):
+    chestnut_if = next(n for n in _main_body(_parse()) if isinstance(n, ast.If) and ast.unparse(n.test) == 'CHESTNUT'
+                       and any('load_big' in ast.unparse(s) for s in n.body))
+    body = [ast.unparse(s) for s in chestnut_if.body]
+    i_put = body.index("params.put_bool('ChestnutActive', model is not None)")
+    self.assertEqual(body[i_put + 1], 'if model is None:\n    drop_chestnut()')
 
 
 if __name__ == '__main__':

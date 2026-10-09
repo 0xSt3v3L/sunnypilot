@@ -40,6 +40,7 @@ from openpilot.common.transformations.model import get_warp_matrix
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper
 from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, smooth_value
 from openpilot.selfdrive.modeld.modeld import ChestnutGpuState
+from tinygrad.device import Device
 
 from openpilot.sunnypilot.modeld_v2.fill_model_msg import fill_model_msg, fill_pose_msg, PublishState, get_curvature_from_output
 from openpilot.sunnypilot.modeld_v2.parse_model_outputs import Parser
@@ -75,6 +76,16 @@ def _find_driving_pkl(bundle):
   if _pkl_exists(pkl_path):
     return pkl_path
   return None
+
+
+def drop_chestnut() -> None:
+  # a dead chestnut left in another device's pending makes that device's next sync hang (commaai/openpilot#39044)
+  try:
+    if "AMD" in Device._opened_devices:
+      for d in Device._opened_devices:
+        Device[d].pending.pop(Device["AMD"], None)
+  except Exception:
+    cloudlog.exception("drop chestnut failed")
 
 
 class FrameMeta:
@@ -315,6 +326,8 @@ def main(demo=False):
     loader.join(BIG_MODEL_TIMEOUT)
     model = big_model
     params.put_bool("ChestnutActive", model is not None)
+    if model is None:
+      drop_chestnut()
 
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
   if model is None:
@@ -457,6 +470,7 @@ def main(demo=False):
       if not model.chestnut:
         raise
       cloudlog.exception("big model failed, fall back to small")
+      drop_chestnut()
       params.put_bool("ChestnutActive", False)
       assert small_model is not None
       model = small_model
