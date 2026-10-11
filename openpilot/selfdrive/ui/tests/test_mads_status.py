@@ -32,3 +32,11 @@ class TestMadsStatus(OpenpilotTestCase):
   def test_status_without_mads(self):
     assert mads_ui_status(ss(True, OpenpilotState.enabled), ss_sp(available=False)) == "engaged"
     assert mads_ui_status(ss(), ss_sp(available=False)) == "disengaged"
+
+  def test_lateral_only_lane_lines_match_confidence_ball_cyan(self):
+    # the mici renderer cannot be imported without a display, so check its source
+    import os
+    from openpilot.common.basedir import BASEDIR
+    with open(os.path.join(BASEDIR, "openpilot/selfdrive/ui/mici/onroad/model_renderer.py")) as f:
+      renderer = f.read()
+    assert "UIStatus.LAT_ONLY: rl.Color(0, 200, 200, 255)," in renderer
