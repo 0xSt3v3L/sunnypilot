@@ -58,6 +58,15 @@ class TestMadsStateMachine(OpenpilotTestCase):
         assert self.sm.state == State.disabled
         self.events.clear()
 
+  def test_immediate_disable_wins_over_pause(self):
+    for state in (State.enabled, State.softDisabling, State.overriding, State.paused):
+      self.events.add(make_event([ET.IMMEDIATE_DISABLE, ET.USER_DISABLE]))
+      self.events.add(EventName.silentLkasDisable)
+      self.sm.state = state
+      self.update()
+      assert self.sm.state == State.disabled
+      self.events.clear()
+
   def test_user_disable(self):
     for state in ALL_STATES:
       for et in MAINTAIN_STATES[state]:

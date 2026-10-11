@@ -58,13 +58,13 @@ class MadsStateMachine:
         ss_sm.current_alert_types.append(alert_type)
 
     if self.state != State.disabled:
-      # user and immediate disable always have priority in a non-disabled state
-      if events.contains(ET.USER_DISABLE):
-        self.state = State.paused if events.has(EventName.silentLkasDisable) else State.disabled
-        ss_sm.current_alert_types.append(ET.USER_DISABLE)
-      elif events.contains(ET.IMMEDIATE_DISABLE):
+      # immediate and user disable always have priority in a non-disabled state; immediate wins over a pause
+      if events.contains(ET.IMMEDIATE_DISABLE):
         self.state = State.disabled
         add_alert_type(ET.IMMEDIATE_DISABLE)
+      elif events.contains(ET.USER_DISABLE):
+        self.state = State.paused if events.has(EventName.silentLkasDisable) else State.disabled
+        ss_sm.current_alert_types.append(ET.USER_DISABLE)
       else:
         if self.state == State.enabled:
           if events.contains(ET.SOFT_DISABLE):
