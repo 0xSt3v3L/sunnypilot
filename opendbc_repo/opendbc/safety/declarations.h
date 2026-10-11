@@ -289,7 +289,7 @@ extern uint32_t heartbeat_engaged_mismatches;  // count of mismatches between he
 
 // MADS: lateral-only engagement, see opendbc/safety/mads.h
 extern bool controls_allowed_lateral;
-extern bool heartbeat_engaged_mads;             // MADS enabled, passed in heartbeat USB command
+extern bool heartbeat_engaged_mads;             // openpilot has MADS enabled (paused counts), heartbeat param2; must be 0 when selfdriveStateSP is stale
 extern uint32_t heartbeat_engaged_mads_mismatches;  // count of mismatches between heartbeat_engaged_mads and controls_allowed_lateral
 void mads_heartbeat_engaged_check(void);
 
