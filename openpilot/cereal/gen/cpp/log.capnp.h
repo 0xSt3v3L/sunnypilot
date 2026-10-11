@@ -132,6 +132,20 @@ enum class EventName_91f1992a1f77fb03: uint16_t {
   BIG_MODEL_FAILED,
   CAR_NOT_READY,
   USER_BOOKMARK_NOT_PAIRED,
+  LKAS_ENABLE,
+  LKAS_DISABLE,
+  MANUAL_LONGITUDINAL_REQUIRED,
+  SILENT_LKAS_ENABLE,
+  SILENT_LKAS_DISABLE,
+  SILENT_BRAKE_HOLD,
+  SILENT_WRONG_GEAR,
+  SILENT_REVERSE_GEAR,
+  SILENT_DOOR_OPEN,
+  SILENT_SEATBELT_NOT_LATCHED,
+  SILENT_PARK_BRAKE,
+  CONTROLS_MISMATCH_LATERAL,
+  WRONG_CAR_MODE_ALERT_ONLY,
+  PEDAL_PRESSED_ALERT_ONLY,
 };
 CAPNP_DECLARE_ENUM(EventName, 91f1992a1f77fb03);
 CAPNP_DECLARE_SCHEMA(d692e23d1a247d99);
@@ -3291,7 +3305,7 @@ struct Event {
     NAV_MODEL_D_E_P_R_E_C_A_T_E_D,
     MAP_RENDER_STATE_D_E_P_R_E_C_A_T_E_D,
     UI_PLAN_D_E_P_R_E_C_A_T_E_D,
-    CUSTOM_RESERVED0,
+    SELFDRIVE_STATE_S_P,
     CUSTOM_RESERVED1,
     CUSTOM_RESERVED2,
     CUSTOM_RESERVED3,
@@ -6398,7 +6412,7 @@ public:
 
   inline  ::uint16_t getSoundOutputLevel() const;
 
-  inline bool getControlsAllowedRESERVED1() const;
+  inline bool getControlsAllowedLateral() const;
 
   inline bool getControlsAllowedRESERVED2() const;
 
@@ -6541,8 +6555,8 @@ public:
   inline  ::uint16_t getSoundOutputLevel();
   inline void setSoundOutputLevel( ::uint16_t value);
 
-  inline bool getControlsAllowedRESERVED1();
-  inline void setControlsAllowedRESERVED1(bool value);
+  inline bool getControlsAllowedLateral();
+  inline void setControlsAllowedLateral(bool value);
 
   inline bool getControlsAllowedRESERVED2();
   inline void setControlsAllowedRESERVED2(bool value);
@@ -23201,9 +23215,9 @@ public:
   inline bool hasUiPlanDEPRECATED() const;
   inline  ::cereal::UiPlan::Reader getUiPlanDEPRECATED() const;
 
-  inline bool isCustomReserved0() const;
-  inline bool hasCustomReserved0() const;
-  inline  ::cereal::CustomReserved0::Reader getCustomReserved0() const;
+  inline bool isSelfdriveStateSP() const;
+  inline bool hasSelfdriveStateSP() const;
+  inline  ::cereal::SelfdriveStateSP::Reader getSelfdriveStateSP() const;
 
   inline bool isCustomReserved1() const;
   inline bool hasCustomReserved1() const;
@@ -24264,13 +24278,13 @@ public:
   inline void adoptUiPlanDEPRECATED(::capnp::Orphan< ::cereal::UiPlan>&& value);
   inline ::capnp::Orphan< ::cereal::UiPlan> disownUiPlanDEPRECATED();
 
-  inline bool isCustomReserved0();
-  inline bool hasCustomReserved0();
-  inline  ::cereal::CustomReserved0::Builder getCustomReserved0();
-  inline void setCustomReserved0( ::cereal::CustomReserved0::Reader value);
-  inline  ::cereal::CustomReserved0::Builder initCustomReserved0();
-  inline void adoptCustomReserved0(::capnp::Orphan< ::cereal::CustomReserved0>&& value);
-  inline ::capnp::Orphan< ::cereal::CustomReserved0> disownCustomReserved0();
+  inline bool isSelfdriveStateSP();
+  inline bool hasSelfdriveStateSP();
+  inline  ::cereal::SelfdriveStateSP::Builder getSelfdriveStateSP();
+  inline void setSelfdriveStateSP( ::cereal::SelfdriveStateSP::Reader value);
+  inline  ::cereal::SelfdriveStateSP::Builder initSelfdriveStateSP();
+  inline void adoptSelfdriveStateSP(::capnp::Orphan< ::cereal::SelfdriveStateSP>&& value);
+  inline ::capnp::Orphan< ::cereal::SelfdriveStateSP> disownSelfdriveStateSP();
 
   inline bool isCustomReserved1();
   inline bool hasCustomReserved1();
@@ -29536,16 +29550,16 @@ inline void PandaState::Builder::setSoundOutputLevel( ::uint16_t value) {
       ::capnp::bounded<36>() * ::capnp::ELEMENTS, value);
 }
 
-inline bool PandaState::Reader::getControlsAllowedRESERVED1() const {
+inline bool PandaState::Reader::getControlsAllowedLateral() const {
   return _reader.getDataField<bool>(
       ::capnp::bounded<481>() * ::capnp::ELEMENTS);
 }
 
-inline bool PandaState::Builder::getControlsAllowedRESERVED1() {
+inline bool PandaState::Builder::getControlsAllowedLateral() {
   return _builder.getDataField<bool>(
       ::capnp::bounded<481>() * ::capnp::ELEMENTS);
 }
-inline void PandaState::Builder::setControlsAllowedRESERVED1(bool value) {
+inline void PandaState::Builder::setControlsAllowedLateral(bool value) {
   _builder.setDataField<bool>(
       ::capnp::bounded<481>() * ::capnp::ELEMENTS, value);
 }
@@ -57457,57 +57471,57 @@ inline ::capnp::Orphan< ::cereal::UiPlan> Event::Builder::disownUiPlanDEPRECATED
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
-inline bool Event::Reader::isCustomReserved0() const {
-  return which() == Event::CUSTOM_RESERVED0;
+inline bool Event::Reader::isSelfdriveStateSP() const {
+  return which() == Event::SELFDRIVE_STATE_S_P;
 }
-inline bool Event::Builder::isCustomReserved0() {
-  return which() == Event::CUSTOM_RESERVED0;
+inline bool Event::Builder::isSelfdriveStateSP() {
+  return which() == Event::SELFDRIVE_STATE_S_P;
 }
-inline bool Event::Reader::hasCustomReserved0() const {
-  if (which() != Event::CUSTOM_RESERVED0) return false;
+inline bool Event::Reader::hasSelfdriveStateSP() const {
+  if (which() != Event::SELFDRIVE_STATE_S_P) return false;
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline bool Event::Builder::hasCustomReserved0() {
-  if (which() != Event::CUSTOM_RESERVED0) return false;
+inline bool Event::Builder::hasSelfdriveStateSP() {
+  if (which() != Event::SELFDRIVE_STATE_S_P) return false;
   return !_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline  ::cereal::CustomReserved0::Reader Event::Reader::getCustomReserved0() const {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED0),
+inline  ::cereal::SelfdriveStateSP::Reader Event::Reader::getSelfdriveStateSP() const {
+  KJ_IREQUIRE((which() == Event::SELFDRIVE_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::get(_reader.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::get(_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline  ::cereal::CustomReserved0::Builder Event::Builder::getCustomReserved0() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED0),
+inline  ::cereal::SelfdriveStateSP::Builder Event::Builder::getSelfdriveStateSP() {
+  KJ_IREQUIRE((which() == Event::SELFDRIVE_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::get(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::get(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::setCustomReserved0( ::cereal::CustomReserved0::Reader value) {
+inline void Event::Builder::setSelfdriveStateSP( ::cereal::SelfdriveStateSP::Reader value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED0);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::set(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::SELFDRIVE_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::set(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), value);
 }
-inline  ::cereal::CustomReserved0::Builder Event::Builder::initCustomReserved0() {
+inline  ::cereal::SelfdriveStateSP::Builder Event::Builder::initSelfdriveStateSP() {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED0);
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::init(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::SELFDRIVE_STATE_S_P);
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::init(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::adoptCustomReserved0(
-    ::capnp::Orphan< ::cereal::CustomReserved0>&& value) {
+inline void Event::Builder::adoptSelfdriveStateSP(
+    ::capnp::Orphan< ::cereal::SelfdriveStateSP>&& value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED0);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::adopt(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::SELFDRIVE_STATE_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::adopt(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
 }
-inline ::capnp::Orphan< ::cereal::CustomReserved0> Event::Builder::disownCustomReserved0() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED0),
+inline ::capnp::Orphan< ::cereal::SelfdriveStateSP> Event::Builder::disownSelfdriveStateSP() {
+  KJ_IREQUIRE((which() == Event::SELFDRIVE_STATE_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved0>::disown(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 

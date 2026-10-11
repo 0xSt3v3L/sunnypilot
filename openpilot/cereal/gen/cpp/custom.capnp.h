@@ -19,6 +19,16 @@ namespace capnp {
 namespace schemas {
 
 CAPNP_DECLARE_SCHEMA(81c2f05a394cf4af);
+CAPNP_DECLARE_SCHEMA(facaa12dd3bf66cf);
+CAPNP_DECLARE_SCHEMA(d6653ec56978643c);
+enum class State_d6653ec56978643c: uint16_t {
+  DISABLED,
+  PAUSED,
+  ENABLED,
+  SOFT_DISABLING,
+  OVERRIDING,
+};
+CAPNP_DECLARE_ENUM(State, d6653ec56978643c);
 CAPNP_DECLARE_SCHEMA(aedffd8f31e7b55d);
 CAPNP_DECLARE_SCHEMA(f35cc4560bbf6ec2);
 CAPNP_DECLARE_SCHEMA(da96579883444c35);
@@ -44,15 +54,33 @@ CAPNP_DECLARE_SCHEMA(a4f1eb3323f5f582);
 
 namespace cereal {
 
-struct CustomReserved0 {
-  CustomReserved0() = delete;
+struct SelfdriveStateSP {
+  SelfdriveStateSP() = delete;
 
   class Reader;
   class Builder;
   class Pipeline;
+  struct Mads;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(81c2f05a394cf4af, 0, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(81c2f05a394cf4af, 0, 1)
+    #if !CAPNP_LITE
+    static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
+    #endif  // !CAPNP_LITE
+  };
+};
+
+struct SelfdriveStateSP::Mads {
+  Mads() = delete;
+
+  class Reader;
+  class Builder;
+  class Pipeline;
+  typedef ::capnp::schemas::State_d6653ec56978643c State;
+
+
+  struct _capnpPrivate {
+    CAPNP_DECLARE_STRUCT_HEADER(facaa12dd3bf66cf, 1, 0)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -346,9 +374,9 @@ struct CustomReserved19 {
 
 // =======================================================================================
 
-class CustomReserved0::Reader {
+class SelfdriveStateSP::Reader {
 public:
-  typedef CustomReserved0 Reads;
+  typedef SelfdriveStateSP Reads;
 
   Reader() = default;
   inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
@@ -363,6 +391,9 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline bool hasMads() const;
+  inline  ::cereal::SelfdriveStateSP::Mads::Reader getMads() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -375,9 +406,9 @@ private:
   friend class ::capnp::Orphanage;
 };
 
-class CustomReserved0::Builder {
+class SelfdriveStateSP::Builder {
 public:
-  typedef CustomReserved0 Builds;
+  typedef SelfdriveStateSP Builds;
 
   Builder() = delete;  // Deleted to discourage incorrect usage.
                        // You can explicitly initialize to nullptr instead.
@@ -391,6 +422,13 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
+  inline bool hasMads();
+  inline  ::cereal::SelfdriveStateSP::Mads::Builder getMads();
+  inline void setMads( ::cereal::SelfdriveStateSP::Mads::Reader value);
+  inline  ::cereal::SelfdriveStateSP::Mads::Builder initMads();
+  inline void adoptMads(::capnp::Orphan< ::cereal::SelfdriveStateSP::Mads>&& value);
+  inline ::capnp::Orphan< ::cereal::SelfdriveStateSP::Mads> disownMads();
+
 private:
   ::capnp::_::StructBuilder _builder;
   template <typename, ::capnp::Kind>
@@ -401,9 +439,101 @@ private:
 };
 
 #if !CAPNP_LITE
-class CustomReserved0::Pipeline {
+class SelfdriveStateSP::Pipeline {
 public:
-  typedef CustomReserved0 Pipelines;
+  typedef SelfdriveStateSP Pipelines;
+
+  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
+  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
+      : _typeless(kj::mv(typeless)) {}
+
+  inline  ::cereal::SelfdriveStateSP::Mads::Pipeline getMads();
+private:
+  ::capnp::AnyPointer::Pipeline _typeless;
+  friend class ::capnp::PipelineHook;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+};
+#endif  // !CAPNP_LITE
+
+class SelfdriveStateSP::Mads::Reader {
+public:
+  typedef Mads Reads;
+
+  Reader() = default;
+  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
+
+  inline ::capnp::MessageSize totalSize() const {
+    return _reader.totalSize().asPublic();
+  }
+
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const {
+    return ::capnp::_::structString(_reader, *_capnpPrivate::brand());
+  }
+#endif  // !CAPNP_LITE
+
+  inline  ::cereal::SelfdriveStateSP::Mads::State getState() const;
+
+  inline bool getEnabled() const;
+
+  inline bool getActive() const;
+
+  inline bool getAvailable() const;
+
+private:
+  ::capnp::_::StructReader _reader;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::List;
+  friend class ::capnp::MessageBuilder;
+  friend class ::capnp::Orphanage;
+};
+
+class SelfdriveStateSP::Mads::Builder {
+public:
+  typedef Mads Builds;
+
+  Builder() = delete;  // Deleted to discourage incorrect usage.
+                       // You can explicitly initialize to nullptr instead.
+  inline Builder(decltype(nullptr)) {}
+  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}
+  inline operator Reader() const { return Reader(_builder.asReader()); }
+  inline Reader asReader() const { return *this; }
+
+  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const { return asReader().toString(); }
+#endif  // !CAPNP_LITE
+
+  inline  ::cereal::SelfdriveStateSP::Mads::State getState();
+  inline void setState( ::cereal::SelfdriveStateSP::Mads::State value);
+
+  inline bool getEnabled();
+  inline void setEnabled(bool value);
+
+  inline bool getActive();
+  inline void setActive(bool value);
+
+  inline bool getAvailable();
+  inline void setAvailable(bool value);
+
+private:
+  ::capnp::_::StructBuilder _builder;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  friend class ::capnp::Orphanage;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+};
+
+#if !CAPNP_LITE
+class SelfdriveStateSP::Mads::Pipeline {
+public:
+  typedef Mads Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -1767,6 +1897,101 @@ private:
 #endif  // !CAPNP_LITE
 
 // =======================================================================================
+
+inline bool SelfdriveStateSP::Reader::hasMads() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool SelfdriveStateSP::Builder::hasMads() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::cereal::SelfdriveStateSP::Mads::Reader SelfdriveStateSP::Reader::getMads() const {
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::cereal::SelfdriveStateSP::Mads::Builder SelfdriveStateSP::Builder::getMads() {
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+#if !CAPNP_LITE
+inline  ::cereal::SelfdriveStateSP::Mads::Pipeline SelfdriveStateSP::Pipeline::getMads() {
+  return  ::cereal::SelfdriveStateSP::Mads::Pipeline(_typeless.getPointerField(0));
+}
+#endif  // !CAPNP_LITE
+inline void SelfdriveStateSP::Builder::setMads( ::cereal::SelfdriveStateSP::Mads::Reader value) {
+  ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::cereal::SelfdriveStateSP::Mads::Builder SelfdriveStateSP::Builder::initMads() {
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void SelfdriveStateSP::Builder::adoptMads(
+    ::capnp::Orphan< ::cereal::SelfdriveStateSP::Mads>&& value) {
+  ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::cereal::SelfdriveStateSP::Mads> SelfdriveStateSP::Builder::disownMads() {
+  return ::capnp::_::PointerHelpers< ::cereal::SelfdriveStateSP::Mads>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline  ::cereal::SelfdriveStateSP::Mads::State SelfdriveStateSP::Mads::Reader::getState() const {
+  return _reader.getDataField< ::cereal::SelfdriveStateSP::Mads::State>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::SelfdriveStateSP::Mads::State SelfdriveStateSP::Mads::Builder::getState() {
+  return _builder.getDataField< ::cereal::SelfdriveStateSP::Mads::State>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void SelfdriveStateSP::Mads::Builder::setState( ::cereal::SelfdriveStateSP::Mads::State value) {
+  _builder.setDataField< ::cereal::SelfdriveStateSP::Mads::State>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool SelfdriveStateSP::Mads::Reader::getEnabled() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+
+inline bool SelfdriveStateSP::Mads::Builder::getEnabled() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS);
+}
+inline void SelfdriveStateSP::Mads::Builder::setEnabled(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<16>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool SelfdriveStateSP::Mads::Reader::getActive() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+
+inline bool SelfdriveStateSP::Mads::Builder::getActive() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS);
+}
+inline void SelfdriveStateSP::Mads::Builder::setActive(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<17>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool SelfdriveStateSP::Mads::Reader::getAvailable() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+
+inline bool SelfdriveStateSP::Mads::Builder::getAvailable() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS);
+}
+inline void SelfdriveStateSP::Mads::Builder::setAvailable(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<18>() * ::capnp::ELEMENTS, value);
+}
 
 }  // namespace
 
