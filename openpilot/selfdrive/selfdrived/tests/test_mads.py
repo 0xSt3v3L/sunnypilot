@@ -279,3 +279,16 @@ class TestMadsLatActive(OpenpilotTestCase):
     assert "mads_lat_active(self.sm['selfdriveState'], self.sm['selfdriveStateSP'])" in src
     assert "'selfdriveStateSP'" in src
     assert "if self.sm['selfdriveState'].active:" not in src
+
+
+class TestPandadMads(OpenpilotTestCase):
+  def test_pandad_sends_mads_heartbeat_and_reports_lateral(self):
+    from openpilot.common.basedir import BASEDIR
+    import os
+    pandad = open(os.path.join(BASEDIR, "openpilot/selfdrive/pandad/pandad.cc")).read()
+    panda_cc = open(os.path.join(BASEDIR, "openpilot/selfdrive/pandad/panda.cc")).read()
+    assert 'SubMaster sm({"selfdriveState", "selfdriveStateSP", "deviceState"});' in pandad
+    assert 'sm.allAliveAndValid({"selfdriveStateSP"}) && sm["selfdriveStateSP"].getSelfdriveStateSP().getMads().getEnabled()' in pandad
+    assert "panda->send_heartbeat(engaged, engaged_mads);" in pandad
+    assert "ps.setControlsAllowedLateral((health.flags_pkt & HEALTH_FLAG_CONTROLS_ALLOWED_LATERAL) != 0U);" in pandad
+    assert "handle->control_write(0xf3, engaged, engaged_mads);" in panda_cc
