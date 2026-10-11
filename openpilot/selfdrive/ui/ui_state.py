@@ -14,6 +14,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.hardware import HARDWARE, PC
 from openpilot.common.hardware.usb import cable_connected, get_usb_state, is_chestnut_usb_id
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled
+from openpilot.selfdrive.ui.lib.mads_status import mads_ui_status
 from openpilot.selfdrive.selfdrived.alertmanager import OFFROAD_ALERTS
 
 BACKLIGHT_OFFROAD = 65 if HARDWARE.get_device_type() == "mici" else 50
@@ -24,6 +25,7 @@ class UIStatus(Enum):
   DISENGAGED = "disengaged"
   ENGAGED = "engaged"
   OVERRIDE = "override"
+  LAT_ONLY = "lat_only"
 
 
 class ChestnutState(Enum):
@@ -63,6 +65,7 @@ class UIState:
         "wideRoadCameraState",
         "managerState",
         "selfdriveState",
+        "selfdriveStateSP",
         "longitudinalPlan",
         "gpsLocationExternal",
         "carOutput",
@@ -125,7 +128,7 @@ class UIState:
 
   @property
   def engaged(self) -> bool:
-    return self.started and self.sm["selfdriveState"].enabled
+    return self.started and (self.sm["selfdriveState"].enabled or self.sm["selfdriveStateSP"].mads.enabled)
 
   def is_onroad(self) -> bool:
     return self.started
@@ -182,14 +185,8 @@ class UIState:
         callback()
 
   def _update_status(self) -> None:
-    if self.started and self.sm.updated["selfdriveState"]:
-      ss = self.sm["selfdriveState"]
-      state = ss.state
-
-      if state in (log.SelfdriveState.OpenpilotState.preEnabled, log.SelfdriveState.OpenpilotState.overriding):
-        self.status = UIStatus.OVERRIDE
-      else:
-        self.status = UIStatus.ENGAGED if ss.enabled else UIStatus.DISENGAGED
+    if self.started and (self.sm.updated["selfdriveState"] or self.sm.updated["selfdriveStateSP"]):
+      self.status = UIStatus(mads_ui_status(self.sm["selfdriveState"], self.sm["selfdriveStateSP"]))
 
     # Check for engagement state changes
     if self.engaged != self._engaged_prev:

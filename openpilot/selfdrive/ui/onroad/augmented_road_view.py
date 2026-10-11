@@ -23,6 +23,7 @@ BORDER_COLORS = {
   UIStatus.DISENGAGED: rl.Color(0x12, 0x28, 0x39, 0xFF),  # Blue for disengaged state
   UIStatus.OVERRIDE: rl.Color(0x89, 0x92, 0x8D, 0xFF),  # Gray for override state
   UIStatus.ENGAGED: rl.Color(0x16, 0x7F, 0x40, 0xFF),  # Green for engaged state
+  UIStatus.LAT_ONLY: rl.Color(0, 200, 200, 255),  # Cyan for MADS lateral-only state
 }
 
 WIDE_CAM_MAX_SPEED = 5.0  # m/s (11 mph)
