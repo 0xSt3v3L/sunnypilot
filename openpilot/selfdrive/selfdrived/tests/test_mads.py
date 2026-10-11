@@ -1,0 +1,229 @@
+from opendbc.car.structs import car
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
+from openpilot.cereal import log
+from openpilot.common.realtime import DT_CTRL
+from openpilot.common.test import OpenpilotTestCase
+from openpilot.selfdrive.selfdrived.events import Events, ET, EVENTS, NormalPermanentAlert
+from openpilot.selfdrive.selfdrived.state import StateMachine, SOFT_DISABLE_TIME
+from openpilot.selfdrive.selfdrived.mads import (Mads, MadsStateMachine, State, LATERAL_MISMATCH_FRAMES,
+                                                 set_mads_alternative_experience, mads_available)
+
+EventName = log.OnroadEvent.EventName
+OpenpilotState = log.SelfdriveState.OpenpilotState
+
+MAINTAIN_STATES = {State.enabled: (None,), State.disabled: (None,), State.softDisabling: (ET.SOFT_DISABLE,),
+                   State.paused: (None,), State.overriding: (ET.OVERRIDE_LATERAL,)}
+ALL_STATES = tuple(State.schema.enumerants.values())
+ENABLE_EVENT_TYPES = (ET.ENABLE, ET.OVERRIDE_LATERAL)
+
+
+def make_event(event_types):
+  EVENTS[0] = {}
+  for ev in event_types:
+    if ev is not None:
+      EVENTS[0][ev] = NormalPermanentAlert("alert")
+  return 0
+
+
+def mads_cp(brand="toyota"):
+  CP = car.CarParams.new_message(brand=brand)
+  set_mads_alternative_experience(CP)
+  return CP
+
+
+def car_state(main=True, **kwargs):
+  return car.CarState.new_message(cruiseState={"available": main}, **kwargs)
+
+
+def panda_state(lateral):
+  return log.PandaState.new_message(controlsAllowedLateral=lateral, safetyModel=car.CarParams.SafetyModel.toyota)
+
+
+class TestMadsStateMachine(OpenpilotTestCase):
+  def setup_method(self):
+    self.events = Events()
+    self.ss_sm = StateMachine()
+    self.ss_sm.soft_disable_timer = int(SOFT_DISABLE_TIME / DT_CTRL)
+    self.sm = MadsStateMachine()
+
+  def update(self, selfdrive_enabled=False):
+    return self.sm.update(self.events, self.ss_sm, selfdrive_enabled)
+
+  def test_immediate_disable(self):
+    for state in ALL_STATES:
+      for et in MAINTAIN_STATES[state]:
+        self.events.add(make_event([et, ET.IMMEDIATE_DISABLE]))
+        self.sm.state = state
+        self.update()
+        assert self.sm.state == State.disabled
+        self.events.clear()
+
+  def test_user_disable(self):
+    for state in ALL_STATES:
+      for et in MAINTAIN_STATES[state]:
+        self.events.add(make_event([et, ET.USER_DISABLE]))
+        self.sm.state = state
+        self.update()
+        assert self.sm.state == State.disabled
+        self.events.clear()
+
+  def test_user_disable_to_paused(self):
+    for state in ALL_STATES:
+      for et in MAINTAIN_STATES[state]:
+        self.events.add(make_event([et, ET.USER_DISABLE]))
+        self.events.add(EventName.silentLkasDisable)
+        self.sm.state = state
+        self.update()
+        assert self.sm.state == (State.disabled if state == State.disabled else State.paused)
+        self.events.clear()
+
+  def test_soft_disable_timer(self):
+    self.sm.state = State.enabled
+    self.events.add(make_event([ET.SOFT_DISABLE]))
+    self.update()
+    for _ in range(int(SOFT_DISABLE_TIME / DT_CTRL)):
+      assert self.sm.state == State.softDisabling
+      self.ss_sm.soft_disable_timer -= 1
+      self.update()
+    assert self.sm.state == State.disabled
+
+  def test_no_entry(self):
+    for et in ENABLE_EVENT_TYPES:
+      self.events.add(make_event([ET.NO_ENTRY, et]))
+      self.update()
+      assert self.sm.state == State.disabled
+      self.events.clear()
+
+  def test_no_entry_with_pause_event_pauses(self):
+    self.events.add(make_event([ET.ENABLE]))
+    self.events.add(EventName.doorOpen)
+    self.update()
+    assert self.sm.state == State.paused
+
+  def test_override_lateral(self):
+    self.sm.state = State.enabled
+    self.events.add(make_event([ET.OVERRIDE_LATERAL]))
+    self.update()
+    assert self.sm.state == State.overriding
+
+  def test_paused_to_enabled(self):
+    self.sm.state = State.paused
+    self.events.add(make_event([ET.ENABLE]))
+    self.update()
+    assert self.sm.state == State.enabled
+
+  def test_maintain_states(self):
+    for state in ALL_STATES:
+      for et in MAINTAIN_STATES[state]:
+        self.sm.state = state
+        self.events.add(make_event([et]))
+        self.update()
+        assert self.sm.state == state
+        self.events.clear()
+
+  def test_active_lateral_only_adds_warning_alerts(self):
+    self.sm.state = State.enabled
+    self.ss_sm.current_alert_types = [ET.PERMANENT]
+    enabled, active = self.update(selfdrive_enabled=False)
+    assert enabled and active
+    assert ET.WARNING in self.ss_sm.current_alert_types
+
+
+class TestMads(OpenpilotTestCase):
+  def setup_method(self):
+    self.events = Events()
+    self.ss_sm = StateMachine()
+    self.mads = Mads(mads_cp())
+    self.CS_prev = car_state(main=False)
+    self.selfdrive_enabled = False
+
+  def step(self, CS, events=(), lateral=True, initialized=True):
+    """One selfdrived step in the real order: stock events, stock state machine, then MADS."""
+    self.events.clear()
+    for e in events:
+      self.events.add(e)
+    if initialized:
+      self.selfdrive_enabled, _ = self.ss_sm.update(self.events)
+    self.mads.update(CS, self.CS_prev, self.events, self.ss_sm, self.selfdrive_enabled, [panda_state(lateral)],
+                     initialized, False)
+    self.CS_prev = CS
+
+  def test_alternative_experience_toyota_only(self):
+    assert mads_available(mads_cp("toyota"))
+    assert mads_cp("toyota").alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+    assert not mads_available(mads_cp("honda"))
+
+  def test_main_on_enables_lateral_only(self):
+    self.step(car_state(main=True))
+    assert self.events.has(EventName.lkasEnable)
+    assert self.mads.enabled and self.mads.active
+    assert not self.selfdrive_enabled
+
+  def test_lkas_enable_does_not_engage_openpilot(self):
+    self.step(car_state(main=True))
+    for _ in range(5):
+      self.step(car_state(main=True))
+    assert self.mads.active
+    assert not self.selfdrive_enabled
+    assert self.ss_sm.state == OpenpilotState.disabled
+
+  def test_main_off_disables(self):
+    self.step(car_state(main=True))
+    self.step(car_state(main=False))
+    assert self.events.has(EventName.lkasDisable)
+    assert not self.mads.enabled
+
+  def test_cruise_engage_enables_mads(self):
+    self.CS_prev = car_state(main=True)
+    self.step(car_state(main=True), events=[EventName.pcmEnable])
+    assert self.selfdrive_enabled
+    assert self.mads.enabled and self.mads.active
+
+  def test_brake_keeps_mads_and_hides_disengage(self):
+    self.CS_prev = car_state(main=True)
+    self.step(car_state(main=True), events=[EventName.pcmEnable])
+    self.step(car_state(main=True, brakePressed=True), events=[EventName.pedalPressed, EventName.pcmDisable])
+    assert not self.selfdrive_enabled
+    assert self.mads.active
+    assert not self.events.has(EventName.pedalPressed)
+    assert not self.events.has(EventName.pcmDisable)
+
+  def test_cancel_button_warns_manual_longitudinal(self):
+    self.CS_prev = car_state(main=True)
+    self.step(car_state(main=True), events=[EventName.pcmEnable])
+    cancel = car_state(main=True, buttonEvents=[{"type": car.CarState.ButtonEvent.Type.cancel, "pressed": True}])
+    self.step(cancel, events=[EventName.buttonCancel])
+    assert self.events.has(EventName.manualLongitudinalRequired)
+    assert self.mads.active
+
+  def test_door_open_at_standstill_pauses_and_resumes(self):
+    self.step(car_state(main=True))
+    self.step(car_state(main=True, standstill=True), events=[EventName.doorOpen])
+    assert self.events.has(EventName.silentDoorOpen)
+    assert not self.events.has(EventName.doorOpen)
+    assert self.mads.state_machine.state == State.paused
+    assert self.mads.enabled and not self.mads.active
+    self.step(car_state(main=True))
+    assert self.events.has(EventName.silentLkasEnable)
+    assert self.mads.active
+
+  def test_lateral_mismatch_disables_after_two_seconds(self):
+    self.step(car_state(main=True))
+    for _ in range(LATERAL_MISMATCH_FRAMES - 1):
+      self.step(car_state(main=True), lateral=False)
+      assert self.mads.active
+    self.step(car_state(main=True), lateral=False)
+    assert self.events.has(EventName.controlsMismatchLateral)
+    assert not self.mads.enabled
+
+  def test_main_on_before_initialized_does_not_enable(self):
+    self.step(car_state(main=True), initialized=False)
+    self.step(car_state(main=True), initialized=True)
+    assert not self.mads.enabled
+    assert not self.events.has(EventName.controlsMismatchLateral)
+
+  def test_unavailable_is_inert(self):
+    self.mads = Mads(mads_cp("honda"))
+    self.step(car_state(main=True))
+    assert not self.mads.enabled
+    assert not self.events.has(EventName.lkasEnable)
