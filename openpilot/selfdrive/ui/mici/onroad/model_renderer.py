@@ -9,6 +9,7 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.radard import RADAR_TO_CAMERA
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.lib.road_edge import road_edge_rgba
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -313,7 +314,7 @@ class ModelRenderer(Widget):
     return color
 
   def _draw_lane_lines(self):
-    """Draw lane lines and road edges. Two closest lines should be green (lane line or road edges)."""
+    """Draw lane lines in the status color and road edges in red while engaged."""
     offset = np.array([self._rect.x, self._rect.y], dtype=np.float32)
 
     for i, lane_line in enumerate(self._lane_lines):
@@ -327,8 +328,7 @@ class ModelRenderer(Widget):
       if road_edge.projected_points.size == 0:
         continue
 
-      # if closest lane lines are not confident, make road edges green
-      color = self._get_ll_color(float(1.0 - self._road_edge_stds[i]), float(self._lane_line_probs[i + 1]) < 0.25, i == 0)
+      color = rl.Color(*road_edge_rgba(float(self._road_edge_stds[i]), ui_state.status == UIStatus.DISENGAGED))
       draw_polygon(self._rect, road_edge.projected_points + offset, color)
 
   def _draw_path(self, sm):
