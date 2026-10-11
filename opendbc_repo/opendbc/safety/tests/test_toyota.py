@@ -77,6 +77,10 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
     values = {"CRUISE_ACTIVE": enable}
     return self.packer.make_can_msg_safety("PCM_CRUISE", 0, values)
 
+  def _acc_main_msg(self, main_on: bool):
+    values = {"MAIN_ON": main_on}
+    return self.packer.make_can_msg_safety("PCM_CRUISE_2", 0, values)
+
   def test_diagnostics(self, stock_longitudinal: bool = False, ecu_disabled: bool = True):
     for should_tx, msg in ((False, b"\x6D\x02\x3E\x00\x00\x00\x00\x00"),  # fwdCamera tester present
                            (False, b"\x0F\x03\xAA\xAA\x00\x00\x00\x00"),  # non-tester present
@@ -152,6 +156,30 @@ class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSaf
   @property
   def SAFETY_PARAM(self):
     return self.EPS_SCALE
+
+
+class TestToyotaMadsSafety(TestToyotaSafetyTorque):
+  """MADS (ALT_EXP_ENABLE_MADS): lateral-only engagement, hard-coded for the Corolla TSS2 config.
+
+  Inherited torque tests run with MADS off, as a regression check that nothing changes without the flag.
+  Each MADS test enables the flag itself.
+  """
+
+  def test_acc_main_on_parsed_from_pcm_cruise_2(self):
+    for main_on in (True, False, True):
+      self.assertTrue(self._rx(self._acc_main_msg(main_on)))
+      self.assertEqual(self.safety.get_acc_main_on(), main_on)
+
+  def test_pcm_cruise_2_is_a_required_rx_message(self):
+    self.safety.set_timer(int(2e6))
+    for msg in (self._speed_msg(0), self._torque_meas_msg(0), self._pcm_status_msg(False), self._user_brake_msg(False)):
+      self.assertTrue(self._rx(msg))
+    self.safety.safety_tick()
+    self.assertFalse(self.safety.safety_config_valid())
+
+    self.assertTrue(self._rx(self._acc_main_msg(True)))
+    self.safety.safety_tick()
+    self.assertTrue(self.safety.safety_config_valid())
 
 
 class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest):
