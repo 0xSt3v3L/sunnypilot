@@ -240,6 +240,13 @@ class TestMadsIntegration(OpenpilotTestCase):
     assert step.index("self.state_machine.update(") < step.index("self.mads.update(") < step.index("self.update_alerts(")
     assert "'selfdriveStateSP'" in src
 
+  def test_selfdrived_publishes_selfdriveStateSP_first(self):
+    import inspect
+    from openpilot.selfdrive.selfdrived import selfdrived
+    src = inspect.getsource(selfdrived.SelfdriveD.publish_selfdriveState)
+    # controlsd polls on selfdriveState, so selfdriveStateSP must already be out when it wakes
+    assert src.index("self.pm.send('selfdriveStateSP'") < src.index("self.pm.send('selfdriveState'")
+
   def test_card_sets_mads_alternative_experience(self):
     import inspect
     from openpilot.selfdrive.car import card

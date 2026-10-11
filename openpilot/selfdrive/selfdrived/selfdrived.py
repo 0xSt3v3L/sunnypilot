@@ -546,8 +546,7 @@ class SelfdriveD:
     ss.alertSound = self.AM.current_alert.audible_alert
     ss.alertHudVisual = self.AM.current_alert.visual_alert
 
-    self.pm.send('selfdriveState', ss_msg)
-
+    # selfdriveStateSP goes out first: controlsd polls on selfdriveState and reads selfdriveStateSP without blocking
     ss_sp_msg = messaging.new_message('selfdriveStateSP')
     ss_sp_msg.valid = True
     mads = ss_sp_msg.selfdriveStateSP.mads
@@ -556,6 +555,8 @@ class SelfdriveD:
     mads.active = self.mads.active
     mads.available = self.mads.available
     self.pm.send('selfdriveStateSP', ss_sp_msg)
+
+    self.pm.send('selfdriveState', ss_msg)
 
     # onroadEvents - logged every second or on change
     if (self.sm.frame % int(1. / DT_CTRL) == 0) or (self.events.names != self.events_prev):

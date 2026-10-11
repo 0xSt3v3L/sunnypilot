@@ -249,3 +249,20 @@ class TestMonitoring(OpenpilotTestCase):
     assert events.call_args.kwargs['op_engaged']
     # gas only counts as driver interaction while longitudinal is engaged
     assert not events.call_args.kwargs['driver_engaged']
+
+  def test_gas_counts_as_interaction_without_engagement(self):
+    # stock behavior: with nothing engaged, gas is driver interaction
+    DM = DriverMonitoring()
+    mv2 = log.ModelDataV2.new_message()
+    mv2.meta.disengagePredictions.brakeDisengageProbs = [0.]
+    sm = {
+      'carState': car.CarState.new_message(vEgo=20., gearShifter=car.CarState.GearShifter.drive, gasPressed=True),
+      'selfdriveState': log.SelfdriveState.new_message(enabled=False),
+      'carControl': car.CarControl.new_message(latActive=False),
+      'modelV2': mv2,
+      'extrinsicsCalibration': mock.Mock(rpyCalib=[0., 0., 0.]),
+      'driverStateV2': msg_ATTENTIVE,
+    }
+    with mock.patch.object(DM, '_update_states'), mock.patch.object(DM, '_update_events') as events:
+      DM.run_step(sm)
+    assert events.call_args.kwargs['driver_engaged']
