@@ -292,7 +292,7 @@ def main(demo=False):
   config_realtime_process(7, 54)
 
   # messaging
-  pub_socks = ["modelV2", "drivingModelData", "cameraOdometry"] + (["chestnutGpuState"] if CHESTNUT else [])
+  pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataSP"] + (["chestnutGpuState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
   sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
 
@@ -445,12 +445,16 @@ def main(demo=False):
       DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
+      model_data_sp_send = messaging.new_message('modelDataSP')
+      model_data_sp_send.valid = modelv2_send.valid
+      RELC.fill_road_edge(model_data_sp_send.modelDataSP.roadEdge)
 
       fill_driving_model_data(drivingdata_send, modelv2_send)
       fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames, meta_main.timestamp_eof, extrinsics_calibration_seen)
       pm.send('modelV2', modelv2_send)
       pm.send('drivingModelData', drivingdata_send)
       pm.send('cameraOdometry', posenet_send)
+      pm.send('modelDataSP', model_data_sp_send)
     last_vipc_frame_id = meta_main.frame_id
 
 if __name__ == "__main__":

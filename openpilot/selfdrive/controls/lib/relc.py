@@ -25,6 +25,10 @@ class RoadEdgeLaneChangeController:
     self.right_edge_timer = 0.0
     self.left_clear_timer = 0.0
     self.right_clear_timer = 0.0
+    self.left_edge_prob = 0.0
+    self.right_edge_prob = 0.0
+    self.left_clearance = 0.0
+    self.right_clearance = 0.0
 
   def update(self, road_edge_stds, lane_line_probs, v_ego: float, road_edges=None) -> tuple[bool, bool]:
     if v_ego < MIN_SPEED:
@@ -42,6 +46,8 @@ class RoadEdgeLaneChangeController:
     else:
       left_clearance = 0.0
       right_clearance = 0.0
+    self.left_edge_prob, self.right_edge_prob = float(left_edge_prob), float(right_edge_prob)
+    self.left_clearance, self.right_clearance = float(left_clearance), float(right_clearance)
 
     left_cond = left_edge_prob > EDGE_PROB and left_lane_prob < NEARSIDE_PROB and left_clearance < EDGE_CLEARANCE
     right_cond = right_edge_prob > EDGE_PROB and right_lane_prob < NEARSIDE_PROB and right_clearance < EDGE_CLEARANCE
@@ -69,3 +75,11 @@ class RoadEdgeLaneChangeController:
         self.right_edge_detected = False
 
     return self.left_edge_detected, self.right_edge_detected
+
+  def fill_road_edge(self, road_edge) -> None:
+    road_edge.leftDetected = self.left_edge_detected
+    road_edge.rightDetected = self.right_edge_detected
+    road_edge.leftProb = self.left_edge_prob
+    road_edge.rightProb = self.right_edge_prob
+    road_edge.leftClearance = self.left_clearance
+    road_edge.rightClearance = self.right_clearance
