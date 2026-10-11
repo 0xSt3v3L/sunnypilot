@@ -6,6 +6,7 @@ import itertools
 
 from opendbc.car.toyota.values import ToyotaSafetyFlags
 from opendbc.car.structs import CarParams
+from opendbc.safety import ALTERNATIVE_EXPERIENCE
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 
@@ -180,6 +181,106 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self.assertTrue(self._rx(self._acc_main_msg(True)))
     self.safety.safety_tick()
     self.assertTrue(self.safety.safety_config_valid())
+
+  def _enable_mads(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+
+  def _grant_lateral_via_main(self):
+    self._enable_mads()
+    self.assertTrue(self._rx(self._acc_main_msg(False)))
+    self.assertTrue(self._rx(self._acc_main_msg(True)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_mads_disabled_never_grants_lateral(self):
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.DEFAULT)
+    self._rx(self._acc_main_msg(False))
+    self._rx(self._acc_main_msg(True))
+    self._rx(self._pcm_status_msg(False))
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_acc_main_rising_edge_grants_lateral_only(self):
+    self._grant_lateral_via_main()
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_acc_main_falling_edge_revokes_lateral(self):
+    self._grant_lateral_via_main()
+    self.assertTrue(self._rx(self._acc_main_msg(False)))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_lateral_requires_a_new_edge(self):
+    self._grant_lateral_via_main()
+    self.safety.set_controls_allowed_lateral(False)
+    for _ in range(3):
+      self._rx(self._acc_main_msg(True))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_cruise_engage_grants_lateral(self):
+    self._grant_lateral_via_main()
+    self.safety.set_controls_allowed_lateral(False)
+    self._rx(self._pcm_status_msg(False))
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_brake_keeps_lateral(self):
+    self._grant_lateral_via_main()
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self._rx(self._speed_msg(10))
+    self._rx(self._user_brake_msg(True))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_gas_keeps_lateral(self):
+    self._grant_lateral_via_main()
+    self._rx(self._user_gas_msg(1))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_invalid_rx_message_revokes_lateral(self):
+    self._grant_lateral_via_main()
+    msg = self._acc_main_msg(True)
+    msg[0].data[7] = (msg[0].data[7] + 1) % 256  # corrupt the checksum byte
+    self.assertFalse(self._rx(msg))
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_safety_tick_revokes_lateral(self):
+    self._grant_lateral_via_main()
+    self.safety.set_timer(int(2e6))
+    self.safety.safety_tick()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_safety_mode_change_resets_lateral(self):
+    self._grant_lateral_via_main()
+    self._reset_safety_hooks()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_heartbeat_mismatch_revokes_lateral(self):
+    self._grant_lateral_via_main()
+    self.safety.set_heartbeat_engaged_mads(False)
+    for _ in range(3):
+      self.assertTrue(self.safety.get_controls_allowed_lateral())
+      self.safety.mads_heartbeat_engaged_check()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_heartbeat_engaged_keeps_lateral(self):
+    self._grant_lateral_via_main()
+    self.safety.set_heartbeat_engaged_mads(True)
+    for _ in range(10):
+      self.safety.mads_heartbeat_engaged_check()
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_main_on_at_safety_init_grants_then_heartbeat_revokes(self):
+    # first PCM_CRUISE_2 after a safety mode init already reports MAIN_ON
+    self._enable_mads()
+    self._reset_safety_hooks()
+    self.assertTrue(self._rx(self._acc_main_msg(True)))
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+    self.safety.set_heartbeat_engaged_mads(False)
+    for _ in range(3):
+      self.safety.mads_heartbeat_engaged_check()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
 
 
 class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest):

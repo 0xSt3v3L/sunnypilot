@@ -4,6 +4,7 @@
 #include "opendbc/safety/lateral.h"
 #include "opendbc/safety/longitudinal.h"
 #include "opendbc/safety/declarations.h"
+#include "opendbc/safety/mads.h"
 #include "opendbc/safety/can.h"
 
 // all the safety modes
@@ -115,6 +116,7 @@ static bool is_msg_valid(RxCheck addr_list[], int index) {
     if (!addr_list[index].status.valid_checksum || !addr_list[index].status.valid_quality_flag || (addr_list[index].status.wrong_counters >= MAX_WRONG_COUNTERS)) {
       valid = false;
       controls_allowed = false;
+      controls_allowed_lateral = false;
     }
   }
   return valid;
@@ -218,6 +220,9 @@ bool safety_rx_hook(const CANPacket_t *msg) {
       stock_ecu_check((m->addr == addr) && (m->bus == msg->bus));
     }
   }
+
+  // MADS lateral-only engagement follows ACC main and controls_allowed edges
+  mads_rx_update();
 
   // reset mismatches on rising edge of controls_allowed to avoid rare race condition
   if (controls_allowed && !controls_allowed_prev) {
@@ -337,6 +342,7 @@ void safety_tick(void) {
     if (lagging || frequency_invalid || !is_msg_valid(current_safety_config.rx_checks, i)) {
       rx_checks_invalid = true;
       controls_allowed = false;
+      controls_allowed_lateral = false;
     }
   }
 
@@ -456,6 +462,7 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
   reset_sample(&angle_meas);
 
   controls_allowed = false;
+  mads_reset();
   relay_malfunction_reset();
   safety_rx_checks_invalid = false;
 

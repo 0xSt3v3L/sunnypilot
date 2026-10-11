@@ -287,6 +287,12 @@ extern uint32_t ts_steer_req_mismatch_last;  // last timestamp steer req was mis
 extern bool heartbeat_engaged;             // openpilot enabled, passed in heartbeat USB command
 extern uint32_t heartbeat_engaged_mismatches;  // count of mismatches between heartbeat_engaged and controls_allowed
 
+// MADS: lateral-only engagement, see opendbc/safety/mads.h
+extern bool controls_allowed_lateral;
+extern bool heartbeat_engaged_mads;             // MADS enabled, passed in heartbeat USB command
+extern uint32_t heartbeat_engaged_mads_mismatches;  // count of mismatches between heartbeat_engaged_mads and controls_allowed_lateral
+void mads_heartbeat_engaged_check(void);
+
 // for safety modes with angle steering control
 extern uint32_t rt_angle_msgs;
 extern uint32_t ts_angle_check_last;
@@ -321,6 +327,9 @@ extern CurvatureSteeringState curvature_state;
 
 // This flag allows AEB to be commanded from openpilot.
 #define ALT_EXP_ALLOW_AEB 16
+
+// This flag enables MADS: lateral control can be engaged on its own (see opendbc/safety/mads.h).
+#define ALT_EXP_ENABLE_MADS 1024
 
 extern int alternative_experience;
 

@@ -46,6 +46,18 @@ bool get_controls_allowed(void){
   return controls_allowed;
 }
 
+bool get_controls_allowed_lateral(void){
+  return controls_allowed_lateral;
+}
+
+void set_controls_allowed_lateral(bool c){
+  controls_allowed_lateral = c;
+}
+
+void set_heartbeat_engaged_mads(bool c){
+  heartbeat_engaged_mads = c;
+}
+
 bool get_ignition_can(void){
   return ignition_can;
 }
@@ -200,6 +212,8 @@ bool get_honda_fwd_brake(void){
 void init_tests(void){
   safety_mode_cnt = 2U;  // avoid ignoring relay_malfunction logic
   alternative_experience = 0;
+  heartbeat_engaged_mads = false;
+  heartbeat_engaged_mads_mismatches = 0U;
   set_timer(0);
   ts_steer_req_mismatch_last = 0;
   valid_steer_req_count = 0;
