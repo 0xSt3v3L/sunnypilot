@@ -287,6 +287,46 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
       self.safety.mads_heartbeat_engaged_check()
     self.assertFalse(self.safety.get_controls_allowed_lateral())
 
+  def _set_prev_torque(self, t):
+    self.safety.set_desired_torque_last(t)
+    self.safety.set_rt_torque_last(t)
+    self.safety.set_torque_meas(t, t)
+
+  def test_lateral_only_allows_steering_within_limits(self):
+    self._grant_lateral_via_main()
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._set_prev_torque(0)
+    self.assertTrue(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP)))
+
+  def test_no_lateral_blocks_steering(self):
+    self._set_prev_torque(0)
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP)))
+
+  def test_lateral_only_keeps_torque_limits(self):
+    self._grant_lateral_via_main()
+    # rate limit
+    self._set_prev_torque(0)
+    self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP + 1)))
+    # torque without the steer request bit
+    self._set_prev_torque(0)
+    self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP, steer_req=0)))
+    # global max torque
+    max_torque = self.MAX_TORQUE_LOOKUP[1][-1]
+    self._set_prev_torque(max_torque)
+    self.assertFalse(self._tx(self._torque_cmd_msg(max_torque + 1)))
+
+  def test_lateral_only_blocks_longitudinal(self):
+    self._grant_lateral_via_main()
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertFalse(self._tx(self._accel_msg(1.0)))
+
+  def test_relay_malfunction_blocks_lateral_only_steering(self):
+    self._grant_lateral_via_main()
+    self._set_prev_torque(0)
+    self.safety.set_relay_malfunction(True)
+    self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP)))
+
 
 class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest):
 
