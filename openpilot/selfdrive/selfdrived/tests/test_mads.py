@@ -247,6 +247,13 @@ class TestMadsIntegration(OpenpilotTestCase):
     # controlsd polls on selfdriveState, so selfdriveStateSP must already be out when it wakes
     assert src.index("self.pm.send('selfdriveStateSP'") < src.index("self.pm.send('selfdriveState'")
 
+  def test_big_model_failure_treats_mads_like_enabled(self):
+    # A behavioral test would need a full SelfdriveD (SubMaster, Params, CarParams); assert the condition text instead.
+    import inspect
+    from openpilot.selfdrive.selfdrived import selfdrived
+    src = inspect.getsource(selfdrived.SelfdriveD.update_events)
+    assert "if not (self.enabled or self.mads.enabled) and not model_unavailable:" in src
+
   def test_card_sets_mads_alternative_experience(self):
     import inspect
     from openpilot.selfdrive.car import card

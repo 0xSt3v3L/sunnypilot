@@ -180,7 +180,7 @@ class SelfdriveD:
     # soft disable if the big model fails
     if big_active:
       self.big_model_active = True
-    if not self.enabled and not model_unavailable:
+    if not (self.enabled or self.mads.enabled) and not model_unavailable:
       self.big_model_active = False
 
     if self.sm.recv_frame['lateralManeuverPlan'] > 0:
