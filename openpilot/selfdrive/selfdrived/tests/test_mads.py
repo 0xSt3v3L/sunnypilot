@@ -225,39 +225,6 @@ class TestMads(OpenpilotTestCase):
     assert self.events.has(EventName.controlsMismatchLateral)
     assert not self.mads.enabled
 
-  def trigger_lateral_mismatch(self):
-    self.step(car_state(main=True))
-    for _ in range(LATERAL_MISMATCH_FRAMES):
-      self.step(car_state(main=True), lateral=False)
-    assert self.events.has(EventName.controlsMismatchLateral)
-    assert not self.mads.enabled
-
-  def test_lateral_mismatch_forbids_reenable_on_main_toggle(self):
-    self.trigger_lateral_mismatch()
-    self.step(car_state(main=True), lateral=True)
-    self.step(car_state(main=False), lateral=True)
-    self.step(car_state(main=True), lateral=True)
-    assert not self.mads.enabled
-    assert not self.events.has(EventName.lkasEnable)
-    assert not self.events.has(EventName.controlsMismatchLateral)
-
-  def test_lateral_mismatch_keeps_stock_cruise_engagement(self):
-    self.trigger_lateral_mismatch()
-    self.step(car_state(main=True), lateral=True)
-    self.step(car_state(main=True), events=[EventName.pcmEnable], lateral=True)
-    assert self.selfdrive_enabled
-    assert not self.mads.enabled and not self.mads.active
-    self.step(car_state(main=True), lateral=True)
-    assert self.selfdrive_enabled
-    assert not self.mads.enabled
-
-  def test_fresh_mads_is_not_latched(self):
-    self.trigger_lateral_mismatch()
-    self.mads = Mads(mads_cp())
-    self.CS_prev = car_state(main=False)
-    self.step(car_state(main=True))
-    assert self.mads.enabled and self.mads.active
-
   def test_main_on_before_initialized_does_not_enable(self):
     self.step(car_state(main=True), initialized=False)
     self.step(car_state(main=True), initialized=True)

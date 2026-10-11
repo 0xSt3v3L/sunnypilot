@@ -126,8 +126,6 @@ class Mads:
     self.enabled = False
     self.active = False
     self.lateral_mismatch_counter = 0
-    # set on a lateral mismatch: MADS stays disabled until selfdrived restarts (ignition cycle)
-    self.lateral_mismatch_latched = False
     self.selfdrive_enabled_prev = False
 
   def update(self, CS, CS_prev, events, ss_sm, selfdrive_enabled: bool, panda_states, initialized: bool, passive: bool) -> None:
@@ -137,10 +135,7 @@ class Mads:
     self._sample_lateral_mismatch(panda_states, selfdrive_enabled)
     self._update_events(CS, CS_prev, events, selfdrive_enabled)
     if not passive and initialized:
-      if self.lateral_mismatch_latched and self.state_machine.state == State.disabled:
-        self.enabled, self.active = False, False
-      else:
-        self.enabled, self.active = self.state_machine.update(events, ss_sm, selfdrive_enabled)
+      self.enabled, self.active = self.state_machine.update(events, ss_sm, selfdrive_enabled)
     self.selfdrive_enabled_prev = selfdrive_enabled
 
   def _sample_lateral_mismatch(self, panda_states, selfdrive_enabled: bool) -> None:
@@ -186,7 +181,7 @@ class Mads:
       if self.enabled or (selfdrive_enabled and self.selfdrive_enabled_prev):
         events.remove(EventName.pcmEnable)
         events.remove(EventName.buttonEnable)
-    elif CS.cruiseState.available and not CS_prev.cruiseState.available and not self.lateral_mismatch_latched:
+    elif CS.cruiseState.available and not CS_prev.cruiseState.available:
       events.add(EventName.lkasEnable)
 
     if not selfdrive_enabled and self.selfdrive_enabled_prev and any(be.type == ButtonType.cancel for be in CS.buttonEvents):
@@ -201,7 +196,6 @@ class Mads:
       events.add(EventName.silentLkasEnable)
 
     if self.lateral_mismatch_counter >= LATERAL_MISMATCH_FRAMES:
-      self.lateral_mismatch_latched = True
       events.add(EventName.controlsMismatchLateral)
 
     # longitudinal disengagement never touches lateral (REMAIN_ACTIVE); the stock state machine already consumed these
