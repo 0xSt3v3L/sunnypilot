@@ -2,10 +2,11 @@ import unittest
 
 from opendbc.car import Bus
 from opendbc.car.structs import CarParams
-from opendbc.car.fw_versions import build_fw_dict
+from opendbc.car.fw_versions import build_fw_dict, match_fw_to_car
 from opendbc.car.toyota.fingerprints import FW_VERSIONS
 from opendbc.car.toyota.values import CAR, DBC, ToyotaFlags, FW_QUERY_CONFIG, PLATFORM_CODE_ECUS, \
                                                   FUZZY_EXCLUDED_PLATFORMS, get_platform_codes
+from opendbc.car.vin import VIN_UNKNOWN
 from opendbc.testing import fuzzy_test
 
 Ecu = CarParams.Ecu
@@ -21,6 +22,23 @@ def cars_with(flags):
 
 
 class TestToyotaInterfaces(unittest.TestCase):
+  def test_taiwan_corolla_altis_hybrid_exact_match(self):
+    # ECU versions reported by a 2024 Taiwan-built Corolla Altis Hybrid
+    fw = [
+      (Ecu.abs, 0x7b0, 0, b'F152612801\x00\x00\x00\x00\x00\x00'),
+      (Ecu.srs, 0x780, 0, b'8917F02D75\x00\x00\x00\x00\x00\x00'),
+      (Ecu.hvac, 0x7c4, 0, b'8865F1217001    '),
+      (Ecu.eps, 0x7a1, 0, b'\x018965B1272000\x00\x00\x00\x00'),
+      (Ecu.engine, 0x700, 0, b'\x02896630ZZ0000\x00\x00\x00\x008966A4703000\x00\x00\x00\x00'),
+      (Ecu.hybrid, 0x7d2, 0, b'\x02899831232000\x00\x00\x00\x00899851209000\x00\x00\x00\x00'),
+      (Ecu.fwdCamera, 0x750, 0x6d, b'\x028646F1206000\x00\x00\x00\x008646G2601500\x00\x00\x00\x00'),
+      (Ecu.fwdRadar, 0x750, 0xf, b'\x018821F3301400\x00\x00\x00\x00'),
+    ]
+    car_fw = [CarParams.CarFw(ecu=ecu, address=addr, subAddress=sub, fwVersion=ver, brand="toyota") for ecu, addr, sub, ver in fw]
+    exact, matches = match_fw_to_car(car_fw, VIN_UNKNOWN, allow_fuzzy=False)
+    self.assertTrue(exact)
+    self.assertEqual(matches, {CAR.TOYOTA_COROLLA_TSS2})
+
   def test_car_flags(self):
     # Angle and radar-ACC cars are always TSS2 cars
     assert not (cars_with(ToyotaFlags.ANGLE_CONTROL | ToyotaFlags.RADAR_ACC) - cars_with(ToyotaFlags.TSS2))
