@@ -18,6 +18,7 @@ static int get_health_pkt(void *dat) {
   health->flags_pkt |= harness_check_ignition() ? HEALTH_FLAG_IGNITION_LINE : 0U;
   health->flags_pkt |= ignition_can ? HEALTH_FLAG_IGNITION_CAN : 0U;
   health->flags_pkt |= controls_allowed ? HEALTH_FLAG_CONTROLS_ALLOWED : 0U;
+  health->flags_pkt |= controls_allowed_lateral ? HEALTH_FLAG_CONTROLS_ALLOWED_LATERAL : 0U;
   health->flags_pkt |= power_save_enabled ? HEALTH_FLAG_POWER_SAVE_ENABLED : 0U;
   health->flags_pkt |= heartbeat_lost ? HEALTH_FLAG_HEARTBEAT_LOST : 0U;
   health->flags_pkt |= safety_rx_checks_invalid ? HEALTH_FLAG_SAFETY_RX_CHECKS_INVALID : 0U;
@@ -281,6 +282,7 @@ int comms_control_handler(ControlPacket_t *req, uint8_t *resp) {
         heartbeat_lost = false;
         heartbeat_disabled = false;
         heartbeat_engaged = (req->param1 == 1U);
+        heartbeat_engaged_mads = (req->param2 == 1U);
         break;
       }
     // **** 0xf6: set siren enabled
