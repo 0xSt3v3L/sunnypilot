@@ -22,6 +22,7 @@ from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.mads import Mads
+from openpilot.selfdrive.selfdrived.standstill_alerts import StandstillAlerts
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -133,6 +134,7 @@ class SelfdriveD:
     self.dm_uncertain_alerted = False
     self.state_machine = StateMachine()
     self.mads = Mads(self.CP)
+    self.standstill_alerts = StandstillAlerts()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     # Determine startup event
@@ -465,6 +467,12 @@ class SelfdriveD:
         self.personality = (self.personality - 1) % 3
         self.params.put('LongitudinalPersonality', self.personality)
         self.events.add(EventName.personalityChanged)
+
+    green_light, lead_departed = self.standstill_alerts.update(CS, self.enabled, self.sm['modelV2'], self.sm['radarState'])
+    if green_light:
+      self.events.add(EventName.greenLight)
+    if lead_departed:
+      self.events.add(EventName.leadDeparted)
 
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)

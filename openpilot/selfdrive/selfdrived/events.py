@@ -1113,6 +1113,23 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.pedalPressedAlertOnly: {
     ET.WARNING: NoEntryAlert("Pedal Pressed"),
   },
+
+  # standstill alerts, raised for one frame while openpilot does not control longitudinal
+  EventName.greenLight: {
+    ET.PERMANENT: Alert(
+      "Light Turned Green",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  EventName.leadDeparted: {
+    ET.PERMANENT: Alert(
+      "Lead Vehicle Departed",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
 }
 
 
