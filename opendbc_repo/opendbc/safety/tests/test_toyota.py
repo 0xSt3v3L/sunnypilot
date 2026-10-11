@@ -192,13 +192,18 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_mads_disabled_never_grants_lateral(self):
-    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.DEFAULT)
-    self._rx(self._acc_main_msg(False))
-    self._rx(self._acc_main_msg(True))
-    self._rx(self._pcm_status_msg(False))
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    # only ALT_EXP_ENABLE_MADS may enable MADS, no other alternative experience bit
+    all_other_bits = 0xFFFF & ~ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+    for alt_exp in (ALTERNATIVE_EXPERIENCE.DEFAULT, all_other_bits):
+      with self.subTest(alt_exp=alt_exp):
+        self.safety.set_alternative_experience(alt_exp)
+        self._reset_safety_hooks()
+        self.assertTrue(self._rx(self._acc_main_msg(False)))
+        self.assertTrue(self._rx(self._acc_main_msg(True)))
+        self.assertTrue(self._rx(self._pcm_status_msg(False)))
+        self.assertTrue(self._rx(self._pcm_status_msg(True)))
+        self.assertTrue(self.safety.get_controls_allowed())
+        self.assertFalse(self.safety.get_controls_allowed_lateral())
 
   def test_acc_main_rising_edge_grants_lateral_only(self):
     self._grant_lateral_via_main()
