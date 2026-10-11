@@ -10,7 +10,24 @@ $Cxx.namespace("cereal");
 # DO rename the structs
 # DON'T change the identifier (e.g. @0x81c2f05a394cf4af)
 
-struct CustomReserved0 @0x81c2f05a394cf4af {
+struct SelfdriveStateSP @0x81c2f05a394cf4af {
+  mads @0 :Mads;
+
+  # MADS: lateral-only engagement
+  struct Mads {
+    state @0 :State;
+    enabled @1 :Bool;    # MADS engaged, including paused
+    active @2 :Bool;     # MADS actuating lateral
+    available @3 :Bool;  # MADS enabled for this car (alternativeExperience)
+
+    enum State {
+      disabled @0;
+      paused @1;
+      enabled @2;
+      softDisabling @3;
+      overriding @4;
+    }
+  }
 }
 
 struct CustomReserved1 @0xaedffd8f31e7b55d {

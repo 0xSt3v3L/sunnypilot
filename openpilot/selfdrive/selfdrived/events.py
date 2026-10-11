@@ -74,6 +74,15 @@ class Events:
   def contains(self, event_type: str) -> bool:
     return any(event_type in EVENTS.get(e, {}) for e in self.events)
 
+  def has(self, event_name: int) -> bool:
+    return event_name in self.events
+
+  def contains_in_list(self, event_names) -> bool:
+    return any(e in self.events for e in event_names)
+
+  def remove(self, event_name: int) -> None:
+    self.events = [e for e in self.events if e != event_name]
+
   def create_alerts(self, event_types: list[str], callback_args=None):
     if callback_args is None:
       callback_args = []
@@ -1011,6 +1020,98 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
 
   EventName.userBookmarkNotPaired: {
     ET.PERMANENT: NormalPermanentAlert("Bookmark Saved", "pair to connect\nto view", duration=1.5),
+  },
+
+  # MADS: lateral-only engagement
+  EventName.lkasEnable: {
+    ET.ENABLE: EngagementAlert(AudibleAlert.engage),
+  },
+
+  EventName.lkasDisable: {
+    ET.USER_DISABLE: EngagementAlert(AudibleAlert.disengage),
+  },
+
+  EventName.manualLongitudinalRequired: {
+    ET.WARNING: Alert(
+      "Adaptive Cruise Control: OFF",
+      "Manual Speed Control Required",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.none, 1.),
+  },
+
+  EventName.silentLkasEnable: {
+    ET.ENABLE: EngagementAlert(AudibleAlert.none),
+  },
+
+  EventName.silentLkasDisable: {
+    ET.USER_DISABLE: EngagementAlert(AudibleAlert.none),
+  },
+
+  EventName.silentBrakeHold: {
+    ET.WARNING: EngagementAlert(AudibleAlert.none),
+    ET.NO_ENTRY: NoEntryAlert("Brake Hold Active"),
+  },
+
+  EventName.silentWrongGear: {
+    ET.WARNING: Alert(
+      "",
+      "",
+      AlertStatus.normal, AlertSize.none,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 0.),
+    ET.NO_ENTRY: Alert(
+      "Gear not D",
+      "openpilot Unavailable",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.none, 0.),
+  },
+
+  EventName.silentReverseGear: {
+    ET.PERMANENT: Alert(
+      "Reverse\nGear",
+      "",
+      AlertStatus.normal, AlertSize.full,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2, creation_delay=0.5),
+    ET.NO_ENTRY: NoEntryAlert("Reverse Gear"),
+  },
+
+  EventName.silentDoorOpen: {
+    ET.WARNING: Alert(
+      "",
+      "",
+      AlertStatus.normal, AlertSize.none,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 0.),
+    ET.NO_ENTRY: NoEntryAlert("Door Open"),
+  },
+
+  EventName.silentSeatbeltNotLatched: {
+    ET.WARNING: Alert(
+      "",
+      "",
+      AlertStatus.normal, AlertSize.none,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 0.),
+    ET.NO_ENTRY: NoEntryAlert("Seatbelt Unlatched"),
+  },
+
+  EventName.silentParkBrake: {
+    ET.WARNING: Alert(
+      "",
+      "",
+      AlertStatus.normal, AlertSize.none,
+      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 0.),
+    ET.NO_ENTRY: NoEntryAlert("Parking Brake Engaged"),
+  },
+
+  EventName.controlsMismatchLateral: {
+    ET.IMMEDIATE_DISABLE: ImmediateDisableAlert("Controls Mismatch: Lateral"),
+    ET.NO_ENTRY: NoEntryAlert("Controls Mismatch: Lateral"),
+  },
+
+  EventName.wrongCarModeAlertOnly: {
+    ET.WARNING: wrong_car_mode_alert,
+  },
+
+  EventName.pedalPressedAlertOnly: {
+    ET.WARNING: NoEntryAlert("Pedal Pressed"),
   },
 }
 
