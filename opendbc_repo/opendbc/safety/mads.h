@@ -3,6 +3,7 @@
 #include "opendbc/safety/declarations.h"
 
 // MADS: lateral-only engagement, enabled by ALT_EXP_ENABLE_MADS.
+// Only supported on the Toyota safety mode: the ACC main parse that revokes lateral is Toyota only.
 // Lateral control is granted on a rising edge of ACC main or of controls_allowed, and revoked on a
 // falling edge of ACC main, on rx check failures, on safety mode changes, and when openpilot stops
 // reporting MADS in its heartbeat. Brake and gas never affect it.
@@ -24,7 +25,7 @@ static void mads_reset(void) {
 
 // called once per rx message, after the safety mode rx hook updated acc_main_on and controls_allowed
 static void mads_rx_update(void) {
-  const bool mads_enabled = (alternative_experience & ALT_EXP_ENABLE_MADS) != 0;
+  const bool mads_enabled = ((alternative_experience & ALT_EXP_ENABLE_MADS) != 0) && (current_safety_mode == SAFETY_TOYOTA);
   const bool acc_main_rising = acc_main_on && !mads_acc_main_prev;
   const bool acc_main_falling = !acc_main_on && mads_acc_main_prev;
   const bool controls_allowed_rising = controls_allowed && !mads_controls_allowed_prev;

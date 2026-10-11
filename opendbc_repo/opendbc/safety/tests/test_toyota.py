@@ -327,6 +327,14 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self.safety.set_relay_malfunction(True)
     self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP)))
 
+  def test_mads_only_on_toyota_safety_mode(self):
+    # allOutput init sets controls_allowed, so the next rx is a controls_allowed rising edge
+    self.safety.set_safety_hooks(CarParams.SafetyModel.allOutput, 0)
+    self._enable_mads()
+    self._rx(self._speed_msg(0))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
 
 class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest):
 
