@@ -21,6 +21,7 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
+from openpilot.selfdrive.selfdrived.mads import Mads
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -72,7 +73,7 @@ class SelfdriveD:
     self.big_model_ready_t = 0.
 
     # Setup sockets
-    self.pm = messaging.PubMaster(['selfdriveState', 'onroadEvents'])
+    self.pm = messaging.PubMaster(['selfdriveState', 'selfdriveStateSP', 'onroadEvents'])
 
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
@@ -131,6 +132,7 @@ class SelfdriveD:
     self.dm_lockout_set = False
     self.dm_uncertain_alerted = False
     self.state_machine = StateMachine()
+    self.mads = Mads(self.CP)
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     # Determine startup event
@@ -546,6 +548,15 @@ class SelfdriveD:
 
     self.pm.send('selfdriveState', ss_msg)
 
+    ss_sp_msg = messaging.new_message('selfdriveStateSP')
+    ss_sp_msg.valid = True
+    mads = ss_sp_msg.selfdriveStateSP.mads
+    mads.state = self.mads.state_machine.state
+    mads.enabled = self.mads.enabled
+    mads.active = self.mads.active
+    mads.available = self.mads.available
+    self.pm.send('selfdriveStateSP', ss_sp_msg)
+
     # onroadEvents - logged every second or on change
     if (self.sm.frame % int(1. / DT_CTRL) == 0) or (self.events.names != self.events_prev):
       ce_send = messaging.new_message('onroadEvents', len(self.events))
@@ -559,6 +570,9 @@ class SelfdriveD:
     self.update_events(CS)
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
+    # MADS runs after the stock state machine, so its events never engage openpilot itself
+    self.mads.update(CS, self.CS_prev, self.events, self.state_machine, self.enabled, self.sm['pandaStates'],
+                     self.initialized, self.CP.passive)
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)

@@ -227,3 +227,21 @@ class TestMads(OpenpilotTestCase):
     self.step(car_state(main=True))
     assert not self.mads.enabled
     assert not self.events.has(EventName.lkasEnable)
+
+
+class TestMadsIntegration(OpenpilotTestCase):
+  def test_selfdrived_wires_mads(self):
+    import inspect
+    from openpilot.selfdrive.selfdrived import selfdrived
+    src = inspect.getsource(selfdrived.SelfdriveD)
+    assert "self.mads = Mads(self.CP)" in src
+    step = inspect.getsource(selfdrived.SelfdriveD.step)
+    # MADS must run after the stock state machine and before alerts are created
+    assert step.index("self.state_machine.update(") < step.index("self.mads.update(") < step.index("self.update_alerts(")
+    assert "'selfdriveStateSP'" in src
+
+  def test_card_sets_mads_alternative_experience(self):
+    import inspect
+    from openpilot.selfdrive.car import card
+    src = inspect.getsource(card)
+    assert src.index("self.CP.alternativeExperience = 0") < src.index("set_mads_alternative_experience(self.CP)")
