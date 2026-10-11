@@ -218,7 +218,7 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self._grant_lateral_via_main()
     self.safety.set_controls_allowed_lateral(False)
     for _ in range(3):
-      self._rx(self._acc_main_msg(True))
+      self.assertTrue(self._rx(self._acc_main_msg(True)))
     self.assertFalse(self.safety.get_controls_allowed_lateral())
 
   def test_cruise_engage_grants_lateral(self):
@@ -227,6 +227,23 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self._rx(self._pcm_status_msg(False))
     self._rx(self._pcm_status_msg(True))
     self.assertTrue(self.safety.get_controls_allowed())
+    self.assertTrue(self.safety.get_controls_allowed_lateral())
+
+  def test_cruise_engage_without_acc_main_does_not_grant_lateral(self):
+    # lateral permission implies ACC main is on: a controls_allowed rising edge with MAIN off must not grant it
+    self._enable_mads()
+    self.assertTrue(self._rx(self._acc_main_msg(False)))
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self._rx(self._pcm_status_msg(True)))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+  def test_reinit_with_acc_main_on_regrants_lateral(self):
+    # MAIN still on after a safety mode re-init must grant again, so mads_reset has to clear the previous MAIN state
+    self._grant_lateral_via_main()
+    self._reset_safety_hooks()
+    self.assertFalse(self.safety.get_controls_allowed_lateral())
+    self.assertTrue(self._rx(self._acc_main_msg(True)))
     self.assertTrue(self.safety.get_controls_allowed_lateral())
 
   def test_brake_keeps_lateral(self):
@@ -334,6 +351,40 @@ class TestToyotaMadsSafety(TestToyotaSafetyTorque):
     self._rx(self._speed_msg(0))
     self.assertTrue(self.safety.get_controls_allowed())
     self.assertFalse(self.safety.get_controls_allowed_lateral())
+
+
+class _LateralOnlyPermission:
+  """Safety proxy that maps controls_allowed to lateral-only permission (controls_allowed stays False)."""
+
+  def __init__(self, safety):
+    self._safety = safety
+
+  def __getattr__(self, name):
+    return getattr(self._safety, name)
+
+  def set_controls_allowed(self, c):
+    self._safety.set_controls_allowed(False)
+    self._safety.set_controls_allowed_lateral(bool(c))
+
+  def get_controls_allowed(self):
+    return self._safety.get_controls_allowed_lateral()
+
+
+class TestToyotaMadsLateralOnlyTorque(TestToyotaMadsSafety):
+  """Re-runs the torque steering tests with lateral-only permission, which must be held to the same limits."""
+
+  def setUp(self):
+    super().setUp()
+    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ENABLE_MADS)
+    self.safety = _LateralOnlyPermission(self.safety)
+
+
+_TORQUE_TESTS = {name for base in (common.TorqueSteeringSafetyTestBase, common.SteerRequestCutSafetyTest,
+                                   common.MotorTorqueSteeringSafetyTest)
+                 for name in vars(base) if name.startswith("test_")}
+for _name in dir(TestToyotaMadsLateralOnlyTorque):
+  if _name.startswith("test_") and _name not in _TORQUE_TESTS:
+    setattr(TestToyotaMadsLateralOnlyTorque, _name, None)  # not collected by unittest
 
 
 class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest):
