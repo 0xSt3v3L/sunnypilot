@@ -149,6 +149,10 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     wrongCarModeAlertOnly @117;
     pedalPressedAlertOnly @118;
 
+    # standstill alerts
+    greenLight @119;
+    leadDeparted @120;
+
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;
     deviceFallingDEPRECATED @71;
@@ -2655,7 +2659,7 @@ struct Event {
     # DON'T change the ID (e.g. @107)
     # DON'T change which struct it points to
     selfdriveStateSP @107 :Custom.SelfdriveStateSP;
-    customReserved1 @108 :Custom.CustomReserved1;
+    modelDataSP @108 :Custom.ModelDataSP;
     customReserved2 @109 :Custom.CustomReserved2;
     customReserved3 @110 :Custom.CustomReserved3;
     customReserved4 @111 :Custom.CustomReserved4;

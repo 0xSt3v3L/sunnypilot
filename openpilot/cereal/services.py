@@ -72,6 +72,7 @@ _services: dict[str, tuple] = {
   "wideRoadCameraState": (True, 20., 20),
   "drivingModelData": (True, 20., 10),
   "modelV2": (True, 20., None, QueueSize.BIG),
+  "modelDataSP": (True, 20., 10),
   "managerState": (True, 2., 1),
   "qNarrowRoadEncodeIdx": (False, 20.),
   "userBookmark": (True, 0., 1),

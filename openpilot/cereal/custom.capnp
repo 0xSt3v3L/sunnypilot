@@ -30,7 +30,18 @@ struct SelfdriveStateSP @0x81c2f05a394cf4af {
   }
 }
 
-struct CustomReserved1 @0xaedffd8f31e7b55d {
+struct ModelDataSP @0xaedffd8f31e7b55d {
+  roadEdge @0 :RoadEdge;
+
+  # road edge lane change controller state, published by modeld
+  struct RoadEdge {
+    leftDetected @0 :Bool;    # blocks an assisted lane change to the left
+    rightDetected @1 :Bool;
+    leftProb @2 :Float32;     # 1 - roadEdgeStds, 0 below the controller's min speed
+    rightProb @3 :Float32;
+    leftClearance @4 :Float32;  # m between the car side and the edge, 0 without road edges
+    rightClearance @5 :Float32;
+  }
 }
 
 struct CustomReserved2 @0xf35cc4560bbf6ec2 {

@@ -56,6 +56,7 @@ static std::map<std::string, service> services = {
   { "wideRoadCameraState", {"wideRoadCameraState", true, 20.000000, 20, 256000}},
   { "drivingModelData", {"drivingModelData", true, 20.000000, 10, 256000}},
   { "modelV2", {"modelV2", true, 20.000000, -1, 10485760}},
+  { "modelDataSP", {"modelDataSP", true, 20.000000, 10, 256000}},
   { "managerState", {"managerState", true, 2.000000, 1, 256000}},
   { "qNarrowRoadEncodeIdx", {"qNarrowRoadEncodeIdx", false, 20.000000, -1, 256000}},
   { "userBookmark", {"userBookmark", true, 0.000000, 1, 256000}},
