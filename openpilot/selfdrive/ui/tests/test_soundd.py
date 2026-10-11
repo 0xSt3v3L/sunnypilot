@@ -1,7 +1,7 @@
 import threading
 
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.cereal import log, messaging
+from openpilot.cereal import custom, log, messaging
 from openpilot.cereal.messaging import SubMaster, PubMaster
 from openpilot.selfdrive.ui.soundd import SELFDRIVE_STATE_TIMEOUT, check_selfdrive_timeout_alert
 
@@ -10,7 +10,7 @@ AudibleAlert = log.SelfdriveState.AudibleAlert
 
 class TestSoundd(OpenpilotTestCase):
   def test_check_selfdrive_timeout_alert(self, mocker):
-    sm = SubMaster(['selfdriveState'])
+    sm = SubMaster(['selfdriveState', 'selfdriveStateSP'])
     pm = PubMaster(['selfdriveState'])
 
     cs = messaging.new_message('selfdriveState')
@@ -27,6 +27,17 @@ class TestSoundd(OpenpilotTestCase):
     assert check_selfdrive_timeout_alert(sm)
 
     clock.return_value = SELFDRIVE_STATE_TIMEOUT + 10
+    assert not check_selfdrive_timeout_alert(sm)
+
+  def test_check_selfdrive_timeout_alert_lateral_only(self, mocker):
+    class FakeSM(dict):
+      recv_time = {'selfdriveState': 0}
+
+    ss_sp = custom.SelfdriveStateSP.new_message(mads={"enabled": True})
+    sm = FakeSM(selfdriveState=log.SelfdriveState.new_message(enabled=False), selfdriveStateSP=ss_sp)
+    mocker.patch("openpilot.selfdrive.ui.soundd.time.monotonic", return_value=SELFDRIVE_STATE_TIMEOUT + 0.1)
+    assert check_selfdrive_timeout_alert(sm)
+    ss_sp.mads.enabled = False
     assert not check_selfdrive_timeout_alert(sm)
 
   # TODO: add test with micd for checking that soundd actually outputs sounds

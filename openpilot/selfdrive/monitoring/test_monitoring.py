@@ -1,3 +1,6 @@
+from unittest import mock
+
+from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.cereal import log
 from openpilot.common.realtime import DT_DMON
@@ -227,3 +230,22 @@ class TestMonitoring(OpenpilotTestCase):
     assert alert_lvls[int((INVISIBLE_SECONDS_TO_ORANGE-1+DT_DMON*s._HI_STD_FALLBACK_TIME-0.1)/DT_DMON)] == 1
     assert alert_lvls[int((INVISIBLE_SECONDS_TO_ORANGE-1+DT_DMON*s._HI_STD_FALLBACK_TIME+0.1)/DT_DMON)] == 2
     assert alert_lvls[int((INVISIBLE_SECONDS_TO_RED-1+DT_DMON*s._HI_STD_FALLBACK_TIME+0.1)/DT_DMON)] == 3
+
+  def test_lateral_only_counts_as_engaged(self):
+    DM = DriverMonitoring()
+    mv2 = log.ModelDataV2.new_message()
+    mv2.meta.disengagePredictions.brakeDisengageProbs = [0.]
+    sm = {
+      'carState': car.CarState.new_message(vEgo=20., gearShifter=car.CarState.GearShifter.drive, gasPressed=True),
+      'selfdriveState': log.SelfdriveState.new_message(enabled=False),
+      'carControl': car.CarControl.new_message(latActive=True),
+      'modelV2': mv2,
+      'extrinsicsCalibration': mock.Mock(rpyCalib=[0., 0., 0.]),
+      'driverStateV2': msg_ATTENTIVE,
+    }
+    with mock.patch.object(DM, '_update_states') as states, mock.patch.object(DM, '_update_events') as events:
+      DM.run_step(sm)
+    assert states.call_args.kwargs['op_engaged']
+    assert events.call_args.kwargs['op_engaged']
+    # gas only counts as driver interaction while longitudinal is engaged
+    assert not events.call_args.kwargs['driver_engaged']

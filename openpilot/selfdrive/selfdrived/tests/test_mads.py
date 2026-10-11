@@ -245,3 +245,30 @@ class TestMadsIntegration(OpenpilotTestCase):
     from openpilot.selfdrive.car import card
     src = inspect.getsource(card)
     assert src.index("self.CP.alternativeExperience = 0") < src.index("set_mads_alternative_experience(self.CP)")
+
+
+class TestMadsLatActive(OpenpilotTestCase):
+  def test_lat_active_follows_mads(self):
+    from openpilot.cereal import custom
+    from openpilot.selfdrive.selfdrived.mads import mads_lat_active
+    ss = log.SelfdriveState.new_message(active=False)
+    ss_sp = custom.SelfdriveStateSP.new_message(mads={"available": True, "active": True})
+    assert mads_lat_active(ss, ss_sp)
+    ss_sp.mads.active = False
+    ss.active = True
+    assert not mads_lat_active(ss, ss_sp)
+
+  def test_lat_active_falls_back_without_mads(self):
+    from openpilot.cereal import custom
+    from openpilot.selfdrive.selfdrived.mads import mads_lat_active
+    ss = log.SelfdriveState.new_message(active=True)
+    ss_sp = custom.SelfdriveStateSP.new_message()
+    assert mads_lat_active(ss, ss_sp)
+
+  def test_controlsd_uses_mads_lat_active(self):
+    import inspect
+    from openpilot.selfdrive.controls import controlsd
+    src = inspect.getsource(controlsd)
+    assert "mads_lat_active(self.sm['selfdriveState'], self.sm['selfdriveStateSP'])" in src
+    assert "'selfdriveStateSP'" in src
+    assert "if self.sm['selfdriveState'].active:" not in src

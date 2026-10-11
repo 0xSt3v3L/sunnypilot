@@ -56,7 +56,8 @@ def check_selfdrive_timeout_alert(sm):
   ss_missing = time.monotonic() - sm.recv_time['selfdriveState']
 
   if ss_missing > SELFDRIVE_STATE_TIMEOUT:
-    if sm['selfdriveState'].enabled and (ss_missing - SELFDRIVE_STATE_TIMEOUT) < 10:
+    engaged = sm['selfdriveState'].enabled or sm['selfdriveStateSP'].mads.enabled
+    if engaged and (ss_missing - SELFDRIVE_STATE_TIMEOUT) < 10:
       return True
 
   return False
@@ -172,7 +173,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure'])
+    sm = messaging.SubMaster(['selfdriveState', 'selfdriveStateSP', 'soundPressure'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
