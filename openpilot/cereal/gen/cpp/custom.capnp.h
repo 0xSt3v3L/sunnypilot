@@ -30,6 +30,7 @@ enum class State_d6653ec56978643c: uint16_t {
 };
 CAPNP_DECLARE_ENUM(State, d6653ec56978643c);
 CAPNP_DECLARE_SCHEMA(aedffd8f31e7b55d);
+CAPNP_DECLARE_SCHEMA(d9b36a7a9ab40aff);
 CAPNP_DECLARE_SCHEMA(f35cc4560bbf6ec2);
 CAPNP_DECLARE_SCHEMA(da96579883444c35);
 CAPNP_DECLARE_SCHEMA(80ae746ee2596b11);
@@ -87,15 +88,31 @@ struct SelfdriveStateSP::Mads {
   };
 };
 
-struct CustomReserved1 {
-  CustomReserved1() = delete;
+struct ModelDataSP {
+  ModelDataSP() = delete;
+
+  class Reader;
+  class Builder;
+  class Pipeline;
+  struct RoadEdge;
+
+  struct _capnpPrivate {
+    CAPNP_DECLARE_STRUCT_HEADER(aedffd8f31e7b55d, 0, 1)
+    #if !CAPNP_LITE
+    static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
+    #endif  // !CAPNP_LITE
+  };
+};
+
+struct ModelDataSP::RoadEdge {
+  RoadEdge() = delete;
 
   class Reader;
   class Builder;
   class Pipeline;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(aedffd8f31e7b55d, 0, 0)
+    CAPNP_DECLARE_STRUCT_HEADER(d9b36a7a9ab40aff, 3, 0)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -547,9 +564,9 @@ private:
 };
 #endif  // !CAPNP_LITE
 
-class CustomReserved1::Reader {
+class ModelDataSP::Reader {
 public:
-  typedef CustomReserved1 Reads;
+  typedef ModelDataSP Reads;
 
   Reader() = default;
   inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
@@ -564,6 +581,9 @@ public:
   }
 #endif  // !CAPNP_LITE
 
+  inline bool hasRoadEdge() const;
+  inline  ::cereal::ModelDataSP::RoadEdge::Reader getRoadEdge() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -576,9 +596,9 @@ private:
   friend class ::capnp::Orphanage;
 };
 
-class CustomReserved1::Builder {
+class ModelDataSP::Builder {
 public:
-  typedef CustomReserved1 Builds;
+  typedef ModelDataSP Builds;
 
   Builder() = delete;  // Deleted to discourage incorrect usage.
                        // You can explicitly initialize to nullptr instead.
@@ -592,6 +612,13 @@ public:
   inline ::kj::StringTree toString() const { return asReader().toString(); }
 #endif  // !CAPNP_LITE
 
+  inline bool hasRoadEdge();
+  inline  ::cereal::ModelDataSP::RoadEdge::Builder getRoadEdge();
+  inline void setRoadEdge( ::cereal::ModelDataSP::RoadEdge::Reader value);
+  inline  ::cereal::ModelDataSP::RoadEdge::Builder initRoadEdge();
+  inline void adoptRoadEdge(::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge>&& value);
+  inline ::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge> disownRoadEdge();
+
 private:
   ::capnp::_::StructBuilder _builder;
   template <typename, ::capnp::Kind>
@@ -602,9 +629,111 @@ private:
 };
 
 #if !CAPNP_LITE
-class CustomReserved1::Pipeline {
+class ModelDataSP::Pipeline {
 public:
-  typedef CustomReserved1 Pipelines;
+  typedef ModelDataSP Pipelines;
+
+  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
+  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
+      : _typeless(kj::mv(typeless)) {}
+
+  inline  ::cereal::ModelDataSP::RoadEdge::Pipeline getRoadEdge();
+private:
+  ::capnp::AnyPointer::Pipeline _typeless;
+  friend class ::capnp::PipelineHook;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+};
+#endif  // !CAPNP_LITE
+
+class ModelDataSP::RoadEdge::Reader {
+public:
+  typedef RoadEdge Reads;
+
+  Reader() = default;
+  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}
+
+  inline ::capnp::MessageSize totalSize() const {
+    return _reader.totalSize().asPublic();
+  }
+
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const {
+    return ::capnp::_::structString(_reader, *_capnpPrivate::brand());
+  }
+#endif  // !CAPNP_LITE
+
+  inline bool getLeftDetected() const;
+
+  inline bool getRightDetected() const;
+
+  inline float getLeftProb() const;
+
+  inline float getRightProb() const;
+
+  inline float getLeftClearance() const;
+
+  inline float getRightClearance() const;
+
+private:
+  ::capnp::_::StructReader _reader;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::List;
+  friend class ::capnp::MessageBuilder;
+  friend class ::capnp::Orphanage;
+};
+
+class ModelDataSP::RoadEdge::Builder {
+public:
+  typedef RoadEdge Builds;
+
+  Builder() = delete;  // Deleted to discourage incorrect usage.
+                       // You can explicitly initialize to nullptr instead.
+  inline Builder(decltype(nullptr)) {}
+  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}
+  inline operator Reader() const { return Reader(_builder.asReader()); }
+  inline Reader asReader() const { return *this; }
+
+  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }
+#if !CAPNP_LITE
+  inline ::kj::StringTree toString() const { return asReader().toString(); }
+#endif  // !CAPNP_LITE
+
+  inline bool getLeftDetected();
+  inline void setLeftDetected(bool value);
+
+  inline bool getRightDetected();
+  inline void setRightDetected(bool value);
+
+  inline float getLeftProb();
+  inline void setLeftProb(float value);
+
+  inline float getRightProb();
+  inline void setRightProb(float value);
+
+  inline float getLeftClearance();
+  inline void setLeftClearance(float value);
+
+  inline float getRightClearance();
+  inline void setRightClearance(float value);
+
+private:
+  ::capnp::_::StructBuilder _builder;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::ToDynamic_;
+  friend class ::capnp::Orphanage;
+  template <typename, ::capnp::Kind>
+  friend struct ::capnp::_::PointerHelpers;
+};
+
+#if !CAPNP_LITE
+class ModelDataSP::RoadEdge::Pipeline {
+public:
+  typedef RoadEdge Pipelines;
 
   inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}
   inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)
@@ -1991,6 +2120,129 @@ inline bool SelfdriveStateSP::Mads::Builder::getAvailable() {
 inline void SelfdriveStateSP::Mads::Builder::setAvailable(bool value) {
   _builder.setDataField<bool>(
       ::capnp::bounded<18>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ModelDataSP::Reader::hasRoadEdge() const {
+  return !_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline bool ModelDataSP::Builder::hasRoadEdge() {
+  return !_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
+}
+inline  ::cereal::ModelDataSP::RoadEdge::Reader ModelDataSP::Reader::getRoadEdge() const {
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::get(_reader.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline  ::cereal::ModelDataSP::RoadEdge::Builder ModelDataSP::Builder::getRoadEdge() {
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::get(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+#if !CAPNP_LITE
+inline  ::cereal::ModelDataSP::RoadEdge::Pipeline ModelDataSP::Pipeline::getRoadEdge() {
+  return  ::cereal::ModelDataSP::RoadEdge::Pipeline(_typeless.getPointerField(0));
+}
+#endif  // !CAPNP_LITE
+inline void ModelDataSP::Builder::setRoadEdge( ::cereal::ModelDataSP::RoadEdge::Reader value) {
+  ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::set(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), value);
+}
+inline  ::cereal::ModelDataSP::RoadEdge::Builder ModelDataSP::Builder::initRoadEdge() {
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::init(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+inline void ModelDataSP::Builder::adoptRoadEdge(
+    ::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge>&& value) {
+  ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::adopt(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
+}
+inline ::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge> ModelDataSP::Builder::disownRoadEdge() {
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::disown(_builder.getPointerField(
+      ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline bool ModelDataSP::RoadEdge::Reader::getLeftDetected() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline bool ModelDataSP::RoadEdge::Builder::getLeftDetected() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setLeftDetected(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool ModelDataSP::RoadEdge::Reader::getRightDetected() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+
+inline bool ModelDataSP::RoadEdge::Builder::getRightDetected() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setRightDetected(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
+}
+
+inline float ModelDataSP::RoadEdge::Reader::getLeftProb() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+
+inline float ModelDataSP::RoadEdge::Builder::getLeftProb() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setLeftProb(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<1>() * ::capnp::ELEMENTS, value);
+}
+
+inline float ModelDataSP::RoadEdge::Reader::getRightProb() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+
+inline float ModelDataSP::RoadEdge::Builder::getRightProb() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setRightProb(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
+}
+
+inline float ModelDataSP::RoadEdge::Reader::getLeftClearance() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+
+inline float ModelDataSP::RoadEdge::Builder::getLeftClearance() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setLeftClearance(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<3>() * ::capnp::ELEMENTS, value);
+}
+
+inline float ModelDataSP::RoadEdge::Reader::getRightClearance() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+
+inline float ModelDataSP::RoadEdge::Builder::getRightClearance() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::RoadEdge::Builder::setRightClearance(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
 }
 
 }  // namespace

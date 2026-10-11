@@ -146,6 +146,8 @@ enum class EventName_91f1992a1f77fb03: uint16_t {
   CONTROLS_MISMATCH_LATERAL,
   WRONG_CAR_MODE_ALERT_ONLY,
   PEDAL_PRESSED_ALERT_ONLY,
+  GREEN_LIGHT,
+  LEAD_DEPARTED,
 };
 CAPNP_DECLARE_ENUM(EventName, 91f1992a1f77fb03);
 CAPNP_DECLARE_SCHEMA(d692e23d1a247d99);
@@ -3306,7 +3308,7 @@ struct Event {
     MAP_RENDER_STATE_D_E_P_R_E_C_A_T_E_D,
     UI_PLAN_D_E_P_R_E_C_A_T_E_D,
     SELFDRIVE_STATE_S_P,
-    CUSTOM_RESERVED1,
+    MODEL_DATA_S_P,
     CUSTOM_RESERVED2,
     CUSTOM_RESERVED3,
     CUSTOM_RESERVED4,
@@ -23219,9 +23221,9 @@ public:
   inline bool hasSelfdriveStateSP() const;
   inline  ::cereal::SelfdriveStateSP::Reader getSelfdriveStateSP() const;
 
-  inline bool isCustomReserved1() const;
-  inline bool hasCustomReserved1() const;
-  inline  ::cereal::CustomReserved1::Reader getCustomReserved1() const;
+  inline bool isModelDataSP() const;
+  inline bool hasModelDataSP() const;
+  inline  ::cereal::ModelDataSP::Reader getModelDataSP() const;
 
   inline bool isCustomReserved2() const;
   inline bool hasCustomReserved2() const;
@@ -24286,13 +24288,13 @@ public:
   inline void adoptSelfdriveStateSP(::capnp::Orphan< ::cereal::SelfdriveStateSP>&& value);
   inline ::capnp::Orphan< ::cereal::SelfdriveStateSP> disownSelfdriveStateSP();
 
-  inline bool isCustomReserved1();
-  inline bool hasCustomReserved1();
-  inline  ::cereal::CustomReserved1::Builder getCustomReserved1();
-  inline void setCustomReserved1( ::cereal::CustomReserved1::Reader value);
-  inline  ::cereal::CustomReserved1::Builder initCustomReserved1();
-  inline void adoptCustomReserved1(::capnp::Orphan< ::cereal::CustomReserved1>&& value);
-  inline ::capnp::Orphan< ::cereal::CustomReserved1> disownCustomReserved1();
+  inline bool isModelDataSP();
+  inline bool hasModelDataSP();
+  inline  ::cereal::ModelDataSP::Builder getModelDataSP();
+  inline void setModelDataSP( ::cereal::ModelDataSP::Reader value);
+  inline  ::cereal::ModelDataSP::Builder initModelDataSP();
+  inline void adoptModelDataSP(::capnp::Orphan< ::cereal::ModelDataSP>&& value);
+  inline ::capnp::Orphan< ::cereal::ModelDataSP> disownModelDataSP();
 
   inline bool isCustomReserved2();
   inline bool hasCustomReserved2();
@@ -57525,57 +57527,57 @@ inline ::capnp::Orphan< ::cereal::SelfdriveStateSP> Event::Builder::disownSelfdr
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
-inline bool Event::Reader::isCustomReserved1() const {
-  return which() == Event::CUSTOM_RESERVED1;
+inline bool Event::Reader::isModelDataSP() const {
+  return which() == Event::MODEL_DATA_S_P;
 }
-inline bool Event::Builder::isCustomReserved1() {
-  return which() == Event::CUSTOM_RESERVED1;
+inline bool Event::Builder::isModelDataSP() {
+  return which() == Event::MODEL_DATA_S_P;
 }
-inline bool Event::Reader::hasCustomReserved1() const {
-  if (which() != Event::CUSTOM_RESERVED1) return false;
+inline bool Event::Reader::hasModelDataSP() const {
+  if (which() != Event::MODEL_DATA_S_P) return false;
   return !_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline bool Event::Builder::hasCustomReserved1() {
-  if (which() != Event::CUSTOM_RESERVED1) return false;
+inline bool Event::Builder::hasModelDataSP() {
+  if (which() != Event::MODEL_DATA_S_P) return false;
   return !_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS).isNull();
 }
-inline  ::cereal::CustomReserved1::Reader Event::Reader::getCustomReserved1() const {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED1),
+inline  ::cereal::ModelDataSP::Reader Event::Reader::getModelDataSP() const {
+  KJ_IREQUIRE((which() == Event::MODEL_DATA_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::get(_reader.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::get(_reader.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline  ::cereal::CustomReserved1::Builder Event::Builder::getCustomReserved1() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED1),
+inline  ::cereal::ModelDataSP::Builder Event::Builder::getModelDataSP() {
+  KJ_IREQUIRE((which() == Event::MODEL_DATA_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::get(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::get(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::setCustomReserved1( ::cereal::CustomReserved1::Reader value) {
+inline void Event::Builder::setModelDataSP( ::cereal::ModelDataSP::Reader value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED1);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::set(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::MODEL_DATA_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::set(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), value);
 }
-inline  ::cereal::CustomReserved1::Builder Event::Builder::initCustomReserved1() {
+inline  ::cereal::ModelDataSP::Builder Event::Builder::initModelDataSP() {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED1);
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::init(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::MODEL_DATA_S_P);
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::init(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
-inline void Event::Builder::adoptCustomReserved1(
-    ::capnp::Orphan< ::cereal::CustomReserved1>&& value) {
+inline void Event::Builder::adoptModelDataSP(
+    ::capnp::Orphan< ::cereal::ModelDataSP>&& value) {
   _builder.setDataField<Event::Which>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::CUSTOM_RESERVED1);
-  ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::adopt(_builder.getPointerField(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, Event::MODEL_DATA_S_P);
+  ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::adopt(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS), kj::mv(value));
 }
-inline ::capnp::Orphan< ::cereal::CustomReserved1> Event::Builder::disownCustomReserved1() {
-  KJ_IREQUIRE((which() == Event::CUSTOM_RESERVED1),
+inline ::capnp::Orphan< ::cereal::ModelDataSP> Event::Builder::disownModelDataSP() {
+  KJ_IREQUIRE((which() == Event::MODEL_DATA_S_P),
               "Must check which() before get()ing a union member.");
-  return ::capnp::_::PointerHelpers< ::cereal::CustomReserved1>::disown(_builder.getPointerField(
+  return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
 }
 
