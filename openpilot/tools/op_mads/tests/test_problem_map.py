@@ -46,6 +46,12 @@ class TestProblemMap(OpenpilotTestCase):
     for kind in KINDS:
       assert kind in html
 
+  def test_tiles_work_from_a_local_file(self):
+    # the OSM tile servers require a Referer, which a page opened from file:// does not send
+    html = render_html([])
+    assert "basemaps.cartocdn.com" in html and "&copy; CARTO" in html and "OpenStreetMap contributors" in html
+    assert "tile.openstreetmap.org" not in html
+
   def test_driver_overrides_hidden_by_default(self):
     html = render_html([])
     hidden = json.loads(html.split("const HIDDEN = ", 1)[1].split(";\n", 1)[0])
