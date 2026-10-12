@@ -17,7 +17,7 @@ def lines(ss=None, ss_sp=None, cs=None, rs=None, mv=None, md=None):
 
 class TestDebugInfo(OpenpilotTestCase):
   def test_defaults(self):
-    assert lines() == ["mads disabled  lat off", "steer +0.0  trq +0", "lead --", "plan --", "edge L0 0.00  R0 0.00"]
+    assert lines() == ["mads disabled  lat off", "steer +0.0  trq +0", "lead --", "plan --", "edge L0 0.00  R0 0.00", "turn --"]
 
   def test_mads_lateral_only(self):
     ss_sp = custom.SelfdriveStateSP.new_message(mads={"available": True, "state": MadsState.enabled, "active": True})
@@ -42,6 +42,10 @@ class TestDebugInfo(OpenpilotTestCase):
   def test_road_edge(self):
     md = custom.ModelDataSP.new_message(roadEdge={"leftDetected": True, "leftProb": 0.625, "rightProb": 0.1})
     assert lines(md=md)[4] == "edge L1 0.62  R0 0.10"
+
+  def test_lane_turn(self):
+    md = custom.ModelDataSP.new_message(laneTurnDirection=custom.ModelDataSP.TurnDirection.turnLeft)
+    assert lines(md=md)[5] == "turn left"
 
   def test_overlay_drawn_only_in_debug_mode(self):
     # the mici renderer cannot be imported without a display, so check its source

@@ -1,3 +1,6 @@
+TURN_TEXT = {"turnLeft": "left", "turnRight": "right"}
+
+
 def debug_lines(ss, ss_sp, car_state, radar_state, model_v2, model_data_sp) -> list[str]:
   """Onroad debug overlay text, shown with ui debug mode (ShowDebugInfo)."""
   mads = ss_sp.mads
@@ -17,4 +20,5 @@ def debug_lines(ss, ss_sp, car_state, radar_state, model_v2, model_data_sp) -> l
     lead_text,
     plan_text,
     f"edge L{int(edge.leftDetected)} {edge.leftProb:.2f}  R{int(edge.rightDetected)} {edge.rightProb:.2f}",
+    f"turn {TURN_TEXT.get(str(model_data_sp.laneTurnDirection), '--')}",
   ]

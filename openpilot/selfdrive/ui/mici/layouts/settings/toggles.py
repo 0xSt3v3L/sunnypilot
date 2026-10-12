@@ -37,6 +37,9 @@ class TogglesLayoutMici(NavScroller):
                                  toggle_callback=restart_needed_callback,
                                  description="Record microphone audio while driving.\n" +
                                              "Audio is included in dashcam videos in comma connect.")
+    lane_turn_toggle = BigParamControl("low-speed turn assist", "LaneTurnDesire",
+                                       description="Below 19 mph (30 km/h), a turn signal tells the driving model to turn.\n" +
+                                                   "Not with a car in the blind spot on that side. Experimental.")
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback,
                                        description="Enable to use openpilot driver assistance.\n" +
                                                    "Disable to use your car's stock driver assistance.")
@@ -47,6 +50,7 @@ class TogglesLayoutMici(NavScroller):
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
+      lane_turn_toggle,
       record_front,
       record_mic,
       enable_openpilot,
@@ -58,6 +62,7 @@ class TogglesLayoutMici(NavScroller):
       ("IsMetric", is_metric_toggle),
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
+      ("LaneTurnDesire", lane_turn_toggle),
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
       ("OpenpilotEnabledToggle", enable_openpilot),
