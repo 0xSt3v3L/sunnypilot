@@ -16,6 +16,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Onroad debug overlay (ui debug mode) | `selfdrive/ui/lib/debug_info.py`, `selfdrive/ui/mici/onroad/debug_overlay.py` |
 | Always offroad (`OffroadMode`) | `system/hardware/hardwared.py`, `selfdrive/ui/lib/always_offroad.py`, mici settings |
 | Low-speed turn desire (`LaneTurnDesire`, default off) | `selfdrive/controls/lib/lane_turn.py`, `desire_helper.py`, `modeld.py` |
+| Low-speed lateral deadband (no wheel turn before a stop) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
 | Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
 
@@ -128,3 +129,7 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   (otherwise every gas press looks like a disengagement).
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the
   `Co-Authored-By` trailer.
+- modeld computes curvature as the model's lateral accel / max(1, v)^2, so near a stop a tiny request becomes a large
+  curvature. This model asks for +0.015 to +0.022 m/s^2 (right) while stopping, which turned the wheel 20-45 deg right
+  before every stop (sunnypilot's own modeld derives curvature differently and did not). `low_speed_lat.py` drops
+  requests under 0.03 m/s^2 below 3 m/s without a blinker; real low-speed turns ask for 0.15+ m/s^2 and are untouched.
