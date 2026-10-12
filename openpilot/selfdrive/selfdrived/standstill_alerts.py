@@ -2,11 +2,13 @@ from openpilot.common.realtime import DT_CTRL
 
 # Green light and lead departure alerts, ported from sunnypilot (e2e_alerts_helper.py) and always enabled.
 # Both only alert while openpilot does not control longitudinal and the car has been stopped for a while,
-# at most once per stop. One deviation: once armed, the lead departure no longer needs the lead within
-# CLOSE_LEAD_DIST, otherwise a lead stopped just inside it could move away without an alert.
+# at most once per stop. Deviations: once armed, the lead departure no longer needs the lead within
+# CLOSE_LEAD_DIST, otherwise a lead stopped just inside it could move away without an alert; and the lead must
+# actually move (LEAD_DEPART_MIN_SPEED), since the radar lead jumps between stopped scooters at Taiwan stop lines.
 
 GREEN_LIGHT_X_THRESHOLD = 30.  # m, the model plan reaching this far means the model wants to go
 LEAD_DEPART_DIST_THRESHOLD = 1.  # m the lead moved away from its closest distance
+LEAD_DEPART_MIN_SPEED = 0.5  # m/s of lead speed; a lead switch changes dRel without motion
 CLOSE_LEAD_DIST = 8.  # m, only a lead this close when stopping arms the lead departure alert
 TRIGGER_TIME = 0.3
 LEAD_ARM_TIME = 1.
@@ -42,7 +44,7 @@ class StandstillAlerts:
     lead = radar_state.leadOne
     has_lead = lead.present
     green = self._update_green(allowed and not has_lead, model_v2)
-    lead_departed = self._update_lead(allowed, has_lead, lead.dRel)
+    lead_departed = self._update_lead(allowed, has_lead, lead.dRel, lead.vLead)
     self.allowed_prev = allowed
     return green, lead_departed
 
@@ -64,7 +66,7 @@ class StandstillAlerts:
       return True
     return False
 
-  def _update_lead(self, allowed: bool, has_lead: bool, d_rel: float) -> bool:
+  def _update_lead(self, allowed: bool, has_lead: bool, d_rel: float, v_lead: float) -> bool:
     close_lead = has_lead and d_rel < CLOSE_LEAD_DIST
     # the lead must already be close when the alert becomes allowed, so a car cutting in later does not count
     if not allowed:
@@ -87,7 +89,8 @@ class StandstillAlerts:
       return False
 
     self.lead_min_dist = min(self.lead_min_dist, d_rel)
-    self.lead_timer = self.lead_timer + DT_CTRL if d_rel - self.lead_min_dist > LEAD_DEPART_DIST_THRESHOLD else 0.
+    moving_away = d_rel - self.lead_min_dist > LEAD_DEPART_DIST_THRESHOLD and v_lead >= LEAD_DEPART_MIN_SPEED
+    self.lead_timer = self.lead_timer + DT_CTRL if moving_away else 0.
     if self.lead_timer > TRIGGER_TIME:
       self.lead_consumed = True
       return True
