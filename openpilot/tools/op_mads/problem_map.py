@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Map recurring problems across routes: disengagements, saturation, driver overrides, blocked lane changes, missed
-standstill alerts and hard model braking in curves.
+standstill alerts, hard model braking in curves and suspected phantom braking.
 
 usage: problem_map.py <logs dir with <route>/<segment>/rlog.zst> [-o out.html]
 The map holds driving positions: it is written next to the logs, never into the repo.
@@ -11,8 +11,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from openpilot.tools.op_mads.drive_report import (SERVICES, load_route, disengagements, lateral_report, road_edge_report,
-                                                  standstill_report, curve_report)
+from openpilot.tools.op_mads.drive_report import (SERVICES, load_route, route_t0, disengagements, lateral_report, road_edge_report,
+                                                  standstill_report, curve_report, override_report, phantom_brake_report)
 
 KINDS = {
   "disengage": "#d62728",
@@ -22,6 +22,7 @@ KINDS = {
   "edge blocked": "#1f77b4",
   "missed alert": "#e377c2",
   "curve hard brake": "#17becf",
+  "phantom brake": "#bcbd22",
 }
 HIDDEN = ("driver override",)  # frequent; off until picked in the layer control
 GPS_SERVICES = ("gpsLocationExternal", "gpsLocation")
@@ -49,19 +50,22 @@ def position_at(track, t: float, max_gap: float = MAX_GPS_GAP):
   return lat, lon
 
 
-def problem_points(msgs, route: str) -> list[dict]:
+def problem_points(msgs, route: str, t0: float | None = None) -> list[dict]:
+  """t0 is the route start (route_t0), so times match drive_report.py and frames.py."""
   if not msgs:
     return []
-  t0 = msgs[0].logMonoTime * 1e-9
+  t0 = msgs[0].logMonoTime * 1e-9 if t0 is None else t0
   items = [(t, kind, "") for t, kind in disengagements(msgs)]
   lat = lateral_report(msgs)
   items += [(x["t"], "steer saturated", f"desired {x['desired']:+.2f} m/s^2" if x["desired"] is not None else "") for x in lat["steer_saturated"]]
-  items += [(t, "driver override", "") for t in lat["override_times"]]
+  items += [(e["t"], "driver override", f"{e['category']}{', opposing' if e['opposing'] else ''}") for e in override_report(msgs)["events"]]
   items += [(t, "edge blocked", "") for t in road_edge_report(msgs)["blocked_times"]]
   items += [(s["t"], "missed alert", f"stop {s['duration']:.0f}s, {'lead' if s['lead'] else 'no lead'}")
             for s in standstill_report(msgs)["stops"] if not s["alerted"]]
   items += [(c["t"], "curve hard brake", f"model {c['model_accel_min']:+.2f} m/s^2, peak {c['peak_ay']:.1f} m/s^2 lateral")
             for c in curve_report(msgs) if c["model_accel_min"] is not None and c["model_accel_min"] <= HARD_BRAKE]
+  items += [(x["t"], "phantom brake", f"{x['accel_min']:+.1f} m/s^2 at {x['v_kph']:.0f} km/h, source {x['source']}")
+            for x in phantom_brake_report(msgs) if x["kind"] == "unexplained"]
 
   track = gps_track(msgs)
   points = []
@@ -132,7 +136,7 @@ def main() -> None:
 
   points = []
   for route in route_dirs(args.logs_dir):
-    route_points = problem_points(load_route(str(route), SERVICES | set(GPS_SERVICES)), route.name)
+    route_points = problem_points(load_route(str(route), SERVICES | set(GPS_SERVICES)), route.name, route_t0(str(route)))
     print(f"{route.name}: {len(route_points)} problems with a GPS position")
     points += route_points
   out = Path(args.output or Path(args.logs_dir) / "problem_map.html")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Summarize an op-chestnut-mads route: MADS, standstill alerts, lane turns, road edges, blind spot, curves, lateral tracking
-and the chestnut.
+"""Summarize an op-chestnut-mads route: MADS, standstill alerts, lane turns, road edges, blind spot, curves, lateral tracking,
+driver override causes, suspected phantom braking and the chestnut. Times are seconds from the route start (route_t0), the
+same base frames.py takes.
 
 usage: drive_report.py <route dir with <segment>/rlog.zst>   (see pull_route.sh)
 """
@@ -29,6 +30,16 @@ SPEED_BINS = (("10-40", 10., 40.), ("40-80", 40., 80.), ("80+", 80., math.inf)) 
 WORST_COUNT = 5
 WORST_SPACING = 5.  # s between reported worst tracking moments
 OVERRIDE_DEBOUNCE = 1.  # s; a press within this time of the last release is the same override
+OVERRIDE_TURN_SPEED = 40. / 3.6  # m/s; an override with a blinker below this is a turn
+OVERRIDE_LOW_SPEED = 20. / 3.6
+PHANTOM_ACCEL = -1.  # m/s^2 of commanded acceleration that counts as braking
+PHANTOM_MIN_TIME = 0.5
+PHANTOM_MIN_SPEED = 15. / 3.6
+PHANTOM_LEAD_TIME = 2.5  # s of headway within which a lead explains braking
+PHANTOM_LEAD_MIN_DIST = 30.
+PHANTOM_CURVE_AY = 1.5  # m/s^2 of predicted lateral acceleration that explains braking
+PHANTOM_STOP_TIME = 2.  # s; a model plan shorter than this many seconds at the current speed is a stop
+PHANTOM_STOP_MIN_X = 20.
 
 
 def _t(m) -> float:
@@ -237,6 +248,24 @@ def curve_report(msgs) -> list[dict]:
   return curves
 
 
+def _override_episodes(cs, cc) -> list[tuple[float, float]]:
+  """(start, end) of driver steering while openpilot steers; presses within OVERRIDE_DEBOUNCE of a release join one."""
+  episodes: list[list[float]] = []
+  prev_pressed = False
+  for t, car in cs:
+    control = _at(cc, t)
+    pressed = car.steeringPressed and control is not None and control.latActive
+    if pressed and not prev_pressed:
+      if episodes and t - episodes[-1][1] < OVERRIDE_DEBOUNCE:
+        episodes[-1][1] = t
+      else:
+        episodes.append([t, t])
+    if pressed:
+      episodes[-1][1] = t
+    prev_pressed = pressed
+  return [(a, b) for a, b in episodes]
+
+
 def lateral_report(msgs) -> dict:
   """Torque control tracking while openpilot steers, the driver does not and the car is above LAT_MIN_SPEED."""
   cc, cs = _of(msgs, "carControl"), _of(msgs, "carState")
@@ -261,15 +290,7 @@ def lateral_report(msgs) -> dict:
     times[name] += dt
     samples.append((err, t, v_kph, ts.desiredLateralAccel))
 
-  override_times, prev_pressed, last_release = [], False, -math.inf
-  for t, car in cs:
-    control = _at(cc, t)
-    pressed = car.steeringPressed and control is not None and control.latActive
-    if pressed and not prev_pressed and t - last_release >= OVERRIDE_DEBOUNCE:
-      override_times.append(t)
-    if prev_pressed and not pressed:
-      last_release = t
-    prev_pressed = pressed
+  override_times = [a for a, _ in _override_episodes(cs, cc)]
   lat_time = sum(dt for _, c, dt in _durations(cc) if c.latActive)
 
   worst: list[dict] = []
@@ -292,6 +313,82 @@ def lateral_report(msgs) -> dict:
           "steer_saturated": [at_event(t) for t, _ in _events(msgs, ("steerSaturated",))],
           "overrides": len(override_times), "override_times": override_times,
           "overrides_per_10min": len(override_times) / (lat_time / 600.) if lat_time > 0 else None, "worst": worst}
+
+
+def override_report(msgs) -> dict:
+  """Why the driver steers while openpilot does: lane change nudge, turn with a blinker, curve, low speed or straight."""
+  CP = _car_params(msgs)
+  cs, cc, ss, mv = _of(msgs, "carState"), _of(msgs, "carControl"), _of(msgs, "selfdriveState"), _of(msgs, "modelV2")
+  torque = _Series((t, c.lateralControlState.torqueState) for t, c in _of(msgs, "controlsState")
+                   if c.lateralControlState.which() == "torqueState")
+  events = []
+  for a, b in _override_episodes(cs, cc):
+    car, model, ts, s = _at(cs, a), _at(mv, a), _at(torque, a), _at(ss, a)
+    ay = car.vEgo ** 2 * math.radians(car.steeringAngleDeg) / (CP.steerRatio * CP.wheelbase) if CP and CP.steerRatio and CP.wheelbase else 0.
+    lane_change = model is not None and str(model.meta.laneChangeState) in ("preLaneChange", "laneChangeStarting")
+    if lane_change:
+      category = "lane change"
+    elif car.leftBlinker != car.rightBlinker and car.vEgo < OVERRIDE_TURN_SPEED:
+      category = "blinker turn"
+    elif abs(ay) >= CURVE_AY:
+      category = "curve"
+    elif car.vEgo < OVERRIDE_LOW_SPEED:
+      category = "low speed"
+    else:
+      category = "straight"
+    opposing = ts is not None and ts.desiredLateralAccel * car.steeringTorque < 0
+    events.append({"t": a, "duration": b - a, "category": category, "opposing": bool(opposing), "v_kph": car.vEgo * MS_TO_KPH,
+                   "full": bool(s is not None and s.enabled)})
+  categories = {}
+  for name in ("lane change", "blinker turn", "curve", "low speed", "straight"):
+    evs = [e for e in events if e["category"] == name]
+    categories[name] = {"count": len(evs), "opposing": sum(e["opposing"] for e in evs),
+                        "avg_s": sum(e["duration"] for e in evs) / len(evs) if evs else None}
+  return {"events": events, "categories": categories, "full": sum(e["full"] for e in events),
+          "lat_only": sum(not e["full"] for e in events)}
+
+
+def phantom_brake_report(msgs) -> list[dict]:
+  """Braking commanded by openpilot longitudinal, classified by what explains it; the rest is suspected phantom braking."""
+  cs, ss, rs, mv, plans = (_of(msgs, w) for w in ("carState", "selfdriveState", "radarState", "modelV2", "longitudinalPlan"))
+  episodes, start, last = [], None, None
+  for t, cc in _of(msgs, "carControl"):
+    car, s = _at(cs, t), _at(ss, t)
+    braking = (cc.actuators.accel <= PHANTOM_ACCEL and s is not None and s.enabled and car is not None and
+               not car.brakePressed and not car.gasPressed and car.vEgo >= PHANTOM_MIN_SPEED)
+    if braking:
+      start = t if start is None else start
+      last = t
+    elif start is not None:
+      episodes.append((start, last))
+      start = None
+  if start is not None:
+    episodes.append((start, last))
+
+  out = []
+  accel = _Series((t, cc.actuators.accel) for t, cc in _of(msgs, "carControl"))
+  for a, b in episodes:
+    if b - a < PHANTOM_MIN_TIME:
+      continue
+    car, r, m, s, plan = _at(cs, a), _at(rs, a), _at(mv, a), _at(ss, a), _at(plans, a)
+    v = car.vEgo
+    lead_d = r.leadOne.dRel if r is not None and r.leadOne.present else None
+    plan_x = m.position.x[-1] if m is not None and len(m.position.x) else None
+    ay_ahead = max((abs(v * w) for w in m.orientationRate.z), default=0.) if m is not None else 0.
+    source = str(plan.longitudinalPlanSource) if plan is not None else None
+    # the planner names the lead it brakes for; a fast-closing lead can be far away
+    if (source is not None and source.startswith("lead")) or (lead_d is not None and lead_d < max(PHANTOM_LEAD_MIN_DIST, PHANTOM_LEAD_TIME * v)):
+      kind = "lead"
+    elif ay_ahead >= PHANTOM_CURVE_AY:
+      kind = "curve"
+    elif plan_x is not None and plan_x < max(PHANTOM_STOP_MIN_X, PHANTOM_STOP_TIME * v):
+      kind = "model stop"
+    else:
+      kind = "unexplained"
+    out.append({"t": a, "duration": b - a, "v_kph": v * MS_TO_KPH, "accel_min": min(_window(accel, a, b + 0.01)),
+                "kind": kind, "lead_d": lead_d, "plan_x": plan_x, "ay_ahead": ay_ahead,
+                "source": source, "experimental": bool(s is not None and s.experimentalMode)})
+  return out
 
 
 def chestnut_report(msgs) -> dict:
@@ -341,8 +438,8 @@ def _f(v, fmt):
   return "--" if v is None else format(v, fmt)
 
 
-def format_report(msgs) -> str:
-  t0 = min((_t(m) for m in msgs), default=0.)
+def format_report(msgs, t0: float | None = None) -> str:
+  t0 = min((_t(m) for m in msgs), default=0.) if t0 is None else t0
   s, m = summary(msgs), mads_time(msgs)
   lines = ["== summary",
            f"  {s['fingerprint']}  {s['duration_s'] / 60:.1f} min  {s['distance_km']:.1f} km  big model {s['big_ratio'] * 100:.0f}%",
@@ -385,6 +482,16 @@ def format_report(msgs) -> str:
             for x in lat["steer_saturated"]]
   lines += [f"  {x['t'] - t0:8.1f}s  worst error {x['error']:.2f} m/s^2  {x['v_kph']:.0f} km/h  desired {x['desired']:+.2f}" for x in lat["worst"]]
 
+  ov = override_report(msgs)
+  lines.append(f"== driver overrides ({ov['lat_only']} lateral-only, {ov['full']} fully engaged)")
+  for name, c in ov["categories"].items():
+    lines.append(f"  {name:12s} {c['count']:3d}  opposing {c['opposing']:3d}  avg {_f(c['avg_s'], '.1f')}s")
+
+  pb = phantom_brake_report(msgs)
+  lines.append(f"== braking by openpilot (accel <= {PHANTOM_ACCEL:.1f} m/s^2 for {PHANTOM_MIN_TIME:.1f}+ s)")
+  lines += [f"  {x['t'] - t0:8.1f}s  {x['kind']:11s} {x['v_kph']:3.0f} km/h  min {x['accel_min']:+.1f}  {x['duration']:.1f}s  " +
+            f"lead {_f(x['lead_d'], '.0f')} m  plan {_f(x['plan_x'], '.0f')} m  source {x['source']}" for x in pb] or ["  none"]
+
   ch = chestnut_report(msgs)
   lines += ["== chestnut",
             f"  temp max {_f(ch['temp_max'], '.0f')} C (avg {_f(ch['temp_avg'], '.0f')}, memory max {_f(ch['mem_temp_max'], '.0f')})  " +
@@ -403,6 +510,13 @@ def route_segments(route_dir: str) -> tuple[list[Path], list[int]]:
   return [p / "rlog.zst" for p in segments if (p / "rlog.zst").is_file()], [int(p.name) for p in segments if not (p / "rlog.zst").is_file()]
 
 
+def route_t0(route_dir: str) -> float:
+  """Route start: the first message of the first segment with an rlog, whatever its type."""
+  from openpilot.tools.lib.logreader import LogReader
+  rlogs, _ = route_segments(route_dir)
+  return next(iter(LogReader(str(rlogs[0])))).logMonoTime * 1e-9
+
+
 def load_route(route_dir: str, services=SERVICES) -> list:
   from openpilot.tools.lib.logreader import LogReader
   rlogs, missing = route_segments(route_dir)
@@ -413,4 +527,4 @@ def load_route(route_dir: str, services=SERVICES) -> list:
 
 
 if __name__ == "__main__":
-  print(format_report(load_route(sys.argv[1])))
+  print(format_report(load_route(sys.argv[1]), route_t0(sys.argv[1])))

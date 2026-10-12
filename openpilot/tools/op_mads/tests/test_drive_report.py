@@ -5,7 +5,7 @@ from openpilot.cereal import log
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.tools.op_mads.drive_report import (summary, mads_time, standstill_report, lane_turn_report, road_edge_report, bsm_report,
                                                   curve_report, lateral_report, chestnut_report, disengagements, format_report,
-                                                  route_segments)
+                                                  route_segments, route_t0, override_report, phantom_brake_report)
 
 EventName = log.OnroadEvent.EventName
 LaneChangeState = log.LaneChangeState
@@ -268,3 +268,74 @@ class TestRouteSegments(OpenpilotTestCase):
       found, missing = route_segments(d)
       assert [p.parent.name for p in found] == ["0", "2", "10"]
       assert missing == [1]
+
+
+class TestOverrides(OpenpilotTestCase):
+  def test_override_categories(self):
+    sr, wb = 15., 2.7
+    curve_angle = math.degrees(2. * sr * wb / 15. ** 2)
+    msgs = [car_params(steer_ratio=sr, wheelbase=wb)]
+    for t in ticks(0., 15.):
+      v, angle, blinker = (5., 0., t >= 4. and t < 5.) if t < 9. else (15., 0., False)
+      if 3.5 <= t < 5.:
+        v = 5.
+      elif 6.5 <= t < 8.:
+        v, angle = 15., curve_angle
+      elif 9.5 <= t < 11.:
+        v = 3.
+      elif t < 3.5:
+        v = 15.
+      pressed = any(start <= t < start + 0.3 for start in (1., 4., 7., 10., 13.))
+      trq = -50. if 13. <= t < 13.3 else 50.
+      msgs.append(at(t, carState={"vEgo": v, "steeringAngleDeg": angle, "rightBlinker": blinker,
+                                  "steeringPressed": pressed, "steeringTorque": trq}))
+      msgs.append(at(t + 0.001, carControl={"latActive": True}))
+      msgs.append(at(t + 0.002, selfdriveState={"enabled": t >= 12.}))
+      msgs.append(torque(t + 0.003, 0.5, 0.5))
+    msgs += [at(t + 0.004, modelV2={"meta": {"laneChangeState": LaneChangeState.preLaneChange if 0.5 <= t < 1.5 else LaneChangeState.off}})
+             for t in ticks(0., 15., DT_MDL)]
+    r = override_report(ordered(msgs))
+    assert [e["category"] for e in r["events"]] == ["lane change", "blinker turn", "curve", "low speed", "straight"]
+    assert [e["opposing"] for e in r["events"]] == [False, False, False, False, True]
+    assert r["categories"]["straight"]["count"] == 1 and abs(r["categories"]["curve"]["avg_s"] - 0.3) < 0.02
+    assert r["lat_only"] == 4 and r["full"] == 1
+
+
+class TestPhantomBrakes(OpenpilotTestCase):
+  def test_classification(self):
+    v = 15.
+    msgs = [at(0., longitudinalPlan={"longitudinalPlanSource": "e2e"})]
+    braking = ((2., 3.), (6., 7.), (10., 11.), (14., 15.), (18., 18.3), (21., 22.))
+    for t in ticks(0., 23.):
+      accel = -1.5 if any(a <= t < b for a, b in braking) else 0.
+      msgs.append(at(t, carState={"vEgo": v, "brakePressed": 21. <= t < 22.}))
+      msgs.append(at(t + 0.001, carControl={"actuators": {"accel": accel}, "longActive": True}))
+      msgs.append(at(t + 0.002, selfdriveState={"enabled": True, "experimentalMode": True}))
+    for t in ticks(0., 23., DT_MDL):
+      msgs.append(at(t, radarState={"leadOne": {"present": 1.5 <= t < 3., "dRel": 15.}}))
+      msgs.append(at(t + 0.001, modelV2={"position": {"x": [0., 2., 5.] if 9.5 <= t < 11. else [0., 50., 150.]},
+                                         "orientationRate": {"z": [0., 0.2, 0.2] if 5.5 <= t < 7. else [0., 0., 0.]}}))
+    r = phantom_brake_report(ordered(msgs))
+    assert [e["kind"] for e in r] == ["lead", "curve", "model stop", "unexplained"]
+    assert abs(r[3]["t"] - 14.) < 0.05 and abs(r[3]["accel_min"] + 1.5) < 1e-6 and r[3]["source"] == "e2e"
+
+
+  def test_planner_braking_for_a_far_closing_lead_is_lead(self):
+    msgs = [at(0., longitudinalPlan={"longitudinalPlanSource": "lead0"}), at(0., radarState={"leadOne": {"present": True, "dRel": 54.}}),
+            at(0., modelV2={"position": {"x": [0., 50., 150.]}})]
+    for t in ticks(0., 2.):
+      msgs.append(at(t, carState={"vEgo": 18.6}))
+      msgs.append(at(t + 0.001, carControl={"actuators": {"accel": -2.}}))
+      msgs.append(at(t + 0.002, selfdriveState={"enabled": True}))
+    assert [e["kind"] for e in phantom_brake_report(ordered(msgs))] == ["lead"]
+
+
+class TestRouteT0(OpenpilotTestCase):
+  def test_first_message_of_the_first_segment(self):
+    import zstandard
+    with tempfile.TemporaryDirectory() as d:
+      for seg, t in (("0", 5.), ("1", 65.)):
+        (Path(d) / seg).mkdir()
+        data = b"".join(log.Event.new_message(logMonoTime=int((t + i) * 1e9), carState={}).to_bytes() for i in range(3))
+        (Path(d) / seg / "rlog.zst").write_bytes(zstandard.ZstdCompressor().compress(data))
+      assert abs(route_t0(d) - 5.) < 1e-6

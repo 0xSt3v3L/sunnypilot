@@ -17,7 +17,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Always offroad (`OffroadMode`) | `system/hardware/hardwared.py`, `selfdrive/ui/lib/always_offroad.py`, mici settings |
 | Low-speed turn desire (`LaneTurnDesire`, default off) | `selfdrive/controls/lib/lane_turn.py`, `desire_helper.py`, `modeld.py` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
-| Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, route pull) |
+| Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
 
 Paths in the table are under `openpilot/` unless they start with `opendbc_repo/` or `panda/`.
 
@@ -88,7 +88,14 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   (`dest` defaults to `OP_MADS_LOGS`). Keep route data outside the repo (size, GPS positions).
 - `drive_report.py <route dir>`: MADS time, standstill alerts and missed stops, lane turns with model curvature, road
   edges, blind spot onsets with speed (low-speed right turns), curves (speed before entry vs model `desiredAcceleration`),
-  lateral tracking (torque error by speed, saturation, debounced driver overrides) and chestnut health.
+  lateral tracking (torque error by speed, saturation, debounced driver overrides), override causes (lane change,
+  blinker turn, curve, low speed, straight; opposing or assisting), braking by openpilot longitudinal classified as
+  lead / curve / model stop / unexplained (suspected phantom braking), and chestnut health.
+- Report, map and frame times are seconds from the route start (`route_t0`, the first message of the first segment), so
+  a time from the report can go straight into `frames.py`.
+- `frames.py <route dir> <seconds...> [-o out.jpg]`: captioned front camera frames (speed, commanded accel, lead, model
+  plan, longitudinal mode) as one contact sheet. Missing `qcamera.ts` segments are copied from the device; decoding needs
+  PyAV in the test copy venv (`uv pip install --python .venv/bin/python av`). Use it to check any report finding on video.
 - `problem_map.py <logs dir>`: a Leaflet map of problems across all routes (disengagements, saturation, overrides,
   blocked lane changes, missed alerts, hard model braking in curves). It holds driving positions: keep it next to the
   logs and do not publish it.

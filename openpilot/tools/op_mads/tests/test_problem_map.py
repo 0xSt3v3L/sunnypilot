@@ -38,6 +38,17 @@ class TestProblemMap(OpenpilotTestCase):
     p = next(p for p in points if p["kind"] == "disengage")
     assert p["route"] == "route_a" and abs(p["lat"] - 25.0004) < 2e-4 and p["seg"] == 0
 
+  def test_phantom_brake_and_route_start(self):
+    msgs = [gps(t, 25.0 + t * 1e-4, 121.5) for t in range(10, 21)]
+    for t in [10. + i * 0.01 for i in range(1000)]:
+      msgs.append(at(t, carState={"vEgo": 15.}))
+      msgs.append(at(t + 0.001, carControl={"actuators": {"accel": -1.5 if 14. <= t < 15. else 0.}}))
+      msgs.append(at(t + 0.002, selfdriveState={"enabled": True}))
+    msgs = sorted(msgs, key=lambda m: m.logMonoTime)
+    points = problem_points(msgs, "route_b", t0=0.)
+    p = next(p for p in points if p["kind"] == "phantom brake")
+    assert abs(p["t"] - 14.) < 0.05 and p["seg"] == 0 and "-1.5" in p["detail"]
+
   def test_render_html(self):
     html = render_html([{"lat": 25.0, "lon": 121.5, "kind": "disengage", "route": "r", "seg": 0, "t": 4., "detail": "x"}])
     assert "leaflet" in html and "L.map" in html
