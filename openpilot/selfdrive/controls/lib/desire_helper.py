@@ -1,6 +1,7 @@
 from openpilot.cereal import log
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_MDL
+from openpilot.selfdrive.controls.lib.lane_turn import TurnDirection, lane_turn_direction
 
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
@@ -9,19 +10,26 @@ LANE_CHANGE_SPEED_MIN = 20 * CV.MPH_TO_MS
 LANE_CHANGE_TIME_MAX = 10.
 LANE_CHANGE_START_TIME = 0.5
 
+TURN_DESIRES = {
+  TurnDirection.turnLeft: log.Desire.turnLeft,
+  TurnDirection.turnRight: log.Desire.turnRight,
+}
+
 class DesireHelper:
   def __init__(self):
     self.lane_change_state = LaneChangeState.off
     self.lane_change_direction = LaneChangeDirection.none
     self.lane_change_timer = 0.0
     self.prev_one_blinker = False
+    self.lane_turn_direction = TurnDirection.none
     self.desire = log.Desire.none
 
   @staticmethod
   def get_lane_change_direction(CS):
     return LaneChangeDirection.left if CS.leftBlinker else LaneChangeDirection.right
 
-  def update(self, carstate, lateral_active, lane_change_prob, left_edge_detected=False, right_edge_detected=False):
+  def update(self, carstate, lateral_active, lane_change_prob, left_edge_detected=False, right_edge_detected=False,
+             lane_turn_enabled=False):
     v_ego = carstate.vEgo
     one_blinker = carstate.leftBlinker != carstate.rightBlinker
     below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN
@@ -71,8 +79,12 @@ class DesireHelper:
 
     self.prev_one_blinker = one_blinker and lateral_active
 
+    # a lane turn only happens below the lane change speed, so it never overrides an active lane change
+    self.lane_turn_direction = lane_turn_direction(carstate, lane_turn_enabled)
     self.desire = log.Desire.none
-    if self.lane_change_state == LaneChangeState.laneChangeStarting:
+    if self.lane_turn_direction != TurnDirection.none:
+      self.desire = TURN_DESIRES[self.lane_turn_direction]
+    elif self.lane_change_state == LaneChangeState.laneChangeStarting:
       if self.lane_change_direction == LaneChangeDirection.left:
         self.desire = log.Desire.laneChangeLeft
       elif self.lane_change_direction == LaneChangeDirection.right:

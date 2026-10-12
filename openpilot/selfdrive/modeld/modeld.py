@@ -326,6 +326,7 @@ def main(demo=False):
 
   DH = DesireHelper()
   RELC = RoadEdgeLaneChangeController()
+  lane_turn_enabled = params.get_bool("LaneTurnDesire")
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -442,12 +443,16 @@ def main(demo=False):
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
       mv2 = modelv2_send.modelV2
       left_edge, right_edge = RELC.update(mv2.roadEdgeStds, mv2.laneLineProbs, v_ego, mv2.roadEdges)
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
+      if sm.frame % 100 == 0:
+        lane_turn_enabled = params.get_bool("LaneTurnDesire")
+      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge,
+                lane_turn_enabled=lane_turn_enabled)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       model_data_sp_send = messaging.new_message('modelDataSP')
       model_data_sp_send.valid = modelv2_send.valid
       RELC.fill_road_edge(model_data_sp_send.modelDataSP.roadEdge)
+      model_data_sp_send.modelDataSP.laneTurnDirection = DH.lane_turn_direction
 
       fill_driving_model_data(drivingdata_send, modelv2_send)
       fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames, meta_main.timestamp_eof, extrinsics_calibration_seen)

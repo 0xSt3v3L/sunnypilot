@@ -32,6 +32,13 @@ struct SelfdriveStateSP @0x81c2f05a394cf4af {
 
 struct ModelDataSP @0xaedffd8f31e7b55d {
   roadEdge @0 :RoadEdge;
+  laneTurnDirection @1 :TurnDirection;  # turn desire sent to the model at low speed with one blinker
+
+  enum TurnDirection {
+    none @0;
+    turnLeft @1;
+    turnRight @2;
+  }
 
   # road edge lane change controller state, published by modeld
   struct RoadEdge {
