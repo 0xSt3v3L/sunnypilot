@@ -164,17 +164,20 @@ def road_edge_report(msgs) -> dict:
   left = sum(dt for _, md, dt in _durations(edges) if md.roadEdge.leftDetected)
   right = sum(dt for _, md, dt in _durations(edges) if md.roadEdge.rightDetected)
   cs = _of(msgs, "carState")
-  blocked_times, was_blocked = [], False
+  # one block per lane change attempt (preLaneChange episode); steeringPressed flickers during a nudge
+  blocked_times, attempt_blocked = [], False
   for t, m in _of(msgs, "modelV2"):
     c, md = _at(cs, t), _at(edges, t)
-    is_blocked = False
-    if c is not None and md is not None and str(m.meta.laneChangeState) == "preLaneChange" and c.steeringPressed:
-      direction = str(m.meta.laneChangeDirection)
-      is_blocked = ((direction == "left" and c.steeringTorque > 0 and md.roadEdge.leftDetected) or
-                    (direction == "right" and c.steeringTorque < 0 and md.roadEdge.rightDetected))
-    if is_blocked and not was_blocked:
+    if str(m.meta.laneChangeState) != "preLaneChange":
+      attempt_blocked = False
+      continue
+    if attempt_blocked or c is None or md is None or not c.steeringPressed:
+      continue
+    direction = str(m.meta.laneChangeDirection)
+    if ((direction == "left" and c.steeringTorque > 0 and md.roadEdge.leftDetected) or
+        (direction == "right" and c.steeringTorque < 0 and md.roadEdge.rightDetected)):
       blocked_times.append(t)
-    was_blocked = is_blocked
+      attempt_blocked = True
   return {"left_s": left, "right_s": right, "blocked": len(blocked_times), "blocked_times": blocked_times}
 
 
@@ -394,10 +397,18 @@ def format_report(msgs) -> str:
   return "\n".join(lines)
 
 
+def route_segments(route_dir: str) -> tuple[list[Path], list[int]]:
+  """rlog paths of the segments that have one, and the segment numbers that do not (e.g. an interrupted copy)."""
+  segments = sorted((p for p in Path(route_dir).iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
+  return [p / "rlog.zst" for p in segments if (p / "rlog.zst").is_file()], [int(p.name) for p in segments if not (p / "rlog.zst").is_file()]
+
+
 def load_route(route_dir: str, services=SERVICES) -> list:
   from openpilot.tools.lib.logreader import LogReader
-  segments = sorted((p for p in Path(route_dir).iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
-  msgs = [m for seg in segments for m in LogReader(str(seg / "rlog.zst")) if m.which() in services]
+  rlogs, missing = route_segments(route_dir)
+  if missing:
+    print(f"{Path(route_dir).name}: segments without rlog.zst skipped: {missing}", file=sys.stderr)
+  msgs = [m for rlog in rlogs for m in LogReader(str(rlog)) if m.which() in services]
   return sorted(msgs, key=lambda m: m.logMonoTime)
 
 

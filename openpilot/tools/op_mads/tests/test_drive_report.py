@@ -1,8 +1,11 @@
 import math
+import tempfile
+from pathlib import Path
 from openpilot.cereal import log
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.tools.op_mads.drive_report import (summary, mads_time, standstill_report, lane_turn_report, road_edge_report, bsm_report,
-                                                  curve_report, lateral_report, chestnut_report, disengagements, format_report)
+                                                  curve_report, lateral_report, chestnut_report, disengagements, format_report,
+                                                  route_segments)
 
 EventName = log.OnroadEvent.EventName
 LaneChangeState = log.LaneChangeState
@@ -118,6 +121,14 @@ class TestRoadEdgeAndBsm(OpenpilotTestCase):
     msgs += [at(t + 0.001, modelV2={"meta": {"laneChangeState": LaneChangeState.preLaneChange, "laneChangeDirection": LaneChangeDirection.left}})
              for t in ticks(0.6, 0.8, DT_MDL)]
     assert [round(t, 2) for t in road_edge_report(ordered(msgs))["blocked_times"]] == [0.6]
+
+  def test_flickering_nudge_is_one_block(self):
+    # steeringPressed flickers during one preLaneChange; that is one blocked lane change
+    msgs = [at(t, modelDataSP={"roadEdge": {"rightDetected": True}}) for t in ticks(0., 3., DT_MDL)]
+    msgs += [at(t, carState={"steeringPressed": int(t * 10) % 2 == 0, "steeringTorque": -50.}) for t in ticks(0.5, 2.)]
+    msgs += [at(t + 0.001, modelV2={"meta": {"laneChangeState": LaneChangeState.preLaneChange, "laneChangeDirection": LaneChangeDirection.right}})
+             for t in ticks(0.5, 2., DT_MDL)]
+    assert road_edge_report(ordered(msgs))["blocked"] == 1
 
   def test_bsm_events(self):
     pattern = [False, True, True, False, True, False]
@@ -245,3 +256,15 @@ class TestFormat(OpenpilotTestCase):
     text = format_report([car_params()])
     for title in ("summary", "MADS", "standstill alerts", "lane turns", "road edges", "blind spot", "curves", "lateral tracking", "chestnut"):
       assert title in text, title
+
+
+class TestRouteSegments(OpenpilotTestCase):
+  def test_skips_missing_and_partial_segments(self):
+    with tempfile.TemporaryDirectory() as d:
+      for seg, name in (("0", "rlog.zst"), ("1", "rlog.zst.part"), ("2", "rlog.zst"), ("10", "rlog.zst")):
+        (Path(d) / seg).mkdir()
+        (Path(d) / seg / name).touch()
+      (Path(d) / "notes").mkdir()
+      found, missing = route_segments(d)
+      assert [p.parent.name for p in found] == ["0", "2", "10"]
+      assert missing == [1]

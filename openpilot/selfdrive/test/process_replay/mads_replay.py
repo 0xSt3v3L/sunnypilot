@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Replay selfdrived on a local route and check MADS against the logged run.
 
-usage: mads_replay.py <route dir with <segment>/rlog.zst>
+usage: mads_replay.py <route dir with <segment>/rlog.zst> [--disengage-on-accelerator]
 The route data stays outside the repo (it is large and holds GPS positions).
 """
 import sys
-from pathlib import Path
 
 STATE_TOLERANCE = 0.05  # s between a logged and a replayed transition
 WARMUP = 1.  # s after selfdrived finished initializing before transitions are compared
@@ -72,18 +71,19 @@ def standstill_alert_violations(msgs) -> list[str]:
 
 
 def load_route(route_dir: str, keep: set[str]) -> list:
-  from openpilot.tools.lib.logreader import LogReader
-  segments = sorted((p for p in Path(route_dir).iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
-  return [m for seg in segments for m in LogReader(str(seg / "rlog.zst")) if m.which() in keep]
+  from openpilot.tools.op_mads.drive_report import load_route as load
+  return load(route_dir, keep)
 
 
-def run_route(route_dir: str) -> dict:
+def run_route(route_dir: str, disengage_on_accelerator: bool = False) -> dict:
+  """disengage_on_accelerator must match the device param; process replay itself defaults it to True."""
   from openpilot.selfdrive.test.process_replay.process_replay import get_process_config, replay_process
   cfg = get_process_config("selfdrived")
   outputs = set(cfg.subs)
   msgs = load_route(route_dir, set(cfg.pubs) | outputs | {"carParams", "initData", "can"})
   logged = [m for m in msgs if m.which() in outputs | {"carState"}]
-  replayed = replay_process(cfg, [m for m in msgs if m.which() not in outputs], disable_progress=True)
+  replayed = replay_process(cfg, [m for m in msgs if m.which() not in outputs], disable_progress=True,
+                            custom_params={"DisengageOnAccelerator": disengage_on_accelerator})
   replayed_stream = sorted(replayed + [m for m in msgs if m.which() == "carState"], key=lambda m: m.logMonoTime)
 
   start = max(init_end_time(logged), init_end_time(replayed)) + WARMUP
@@ -102,7 +102,7 @@ def run_route(route_dir: str) -> dict:
 
 
 def main() -> int:
-  report = run_route(sys.argv[1])
+  report = run_route(sys.argv[1], disengage_on_accelerator="--disengage-on-accelerator" in sys.argv[2:])
   t0 = report["mads_transitions"][0][0] if report["mads_transitions"] else 0.
   print(f"compared from {report['start'] - t0:.1f}s")
   for t, state in report["mads_transitions"]:

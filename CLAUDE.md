@@ -105,8 +105,10 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   keep MADS disabled: a later cruise engage would give an engaged openpilot that never steers (reverted in `a7a3c9a39`).
   A mismatch behaves like stock `controlsMismatch`, and the panda still gates steering.
 - The standstill alerts only fire while openpilot does not control longitudinal and after the car first moved.
-- Blind spot: op sets `ToyotaFlags.HAS_BSM` only if `0x3F6` shows up during fingerprinting. Logs suggest this car has
-  BSM but the flag may be missing; verify on an op route before relying on blind spot data. Per the owner's manual BSM
-  works only above about 16 km/h, so features built on it (e.g. a right-turn scooter warning) cannot cover slower turns.
+- Blind spot: op sets `ToyotaFlags.HAS_BSM` only if `0x3F6` shows up during fingerprinting; it was set on every op route
+  so far. The owner's manual says BSM works above about 16 km/h, but logs show onsets down to 10-11 km/h (also after
+  minutes below 16 km/h) and none below 8 km/h: treat about 9-10 km/h as the real floor for blind spot features.
+- Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
+  (otherwise every gas press looks like a disengagement).
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the
   `Co-Authored-By` trailer.

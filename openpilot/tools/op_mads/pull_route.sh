@@ -16,8 +16,13 @@ route=${1:?usage: pull_route.sh --list | pull_route.sh <route> [dest]}
 [ -n "$DEST" ] || { echo "pass a destination directory or set OP_MADS_LOGS"; exit 1; }
 for seg in $(ssh "$DEVICE" "ls -d $REALDATA/${route}--* | sed 's/.*--//' | sort -n"); do
   mkdir -p "$DEST/$route/$seg"
+  # copy to a .part file first so an interrupted copy is never mistaken for a complete segment
   if [ ! -f "$DEST/$route/$seg/rlog.zst" ]; then
-    scp -q "$DEVICE:$REALDATA/${route}--$seg/rlog.zst" "$DEST/$route/$seg/rlog.zst" || echo "segment $seg has no rlog.zst"
+    if scp -q -o ConnectTimeout=8 "$DEVICE:$REALDATA/${route}--$seg/rlog.zst" "$DEST/$route/$seg/rlog.zst.part"; then
+      mv "$DEST/$route/$seg/rlog.zst.part" "$DEST/$route/$seg/rlog.zst"
+    else
+      echo "segment $seg: copy failed, rerun to retry"
+    fi
   fi
 done
 echo "$DEST/$route"

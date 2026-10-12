@@ -91,6 +91,17 @@ class TestReplayConfig(OpenpilotTestCase):
     assert CP.alternativeExperience & ALTERNATIVE_EXPERIENCE.ENABLE_MADS
 
 
+class TestRouteParams(OpenpilotTestCase):
+  def test_replays_with_the_device_default_for_gas(self, mocker):
+    # process replay defaults DisengageOnAccelerator to True; the device default is False (gas only overrides)
+    mocker.patch("openpilot.selfdrive.test.process_replay.mads_replay.load_route", return_value=[])
+    replay = mocker.patch("openpilot.selfdrive.test.process_replay.process_replay.replay_process", return_value=[])
+    run_route("route")
+    assert replay.call_args.kwargs["custom_params"] == {"DisengageOnAccelerator": False}
+    run_route("route", disengage_on_accelerator=True)
+    assert replay.call_args.kwargs["custom_params"] == {"DisengageOnAccelerator": True}
+
+
 @unittest.skipUnless(ROUTE, "set MADS_REPLAY_ROUTE to a local route directory with <segment>/rlog.zst")
 class TestMadsRouteReplay(OpenpilotTestCase):
   def test_route_matches_logged_run(self):
