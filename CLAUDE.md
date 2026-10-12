@@ -115,6 +115,15 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - Blind spot: op sets `ToyotaFlags.HAS_BSM` only if `0x3F6` shows up during fingerprinting; it was set on every op route
   so far. The owner's manual says BSM works above about 16 km/h, but logs show onsets down to 10-11 km/h (also after
   minutes below 16 km/h) and none below 8 km/h: treat about 9-10 km/h as the real floor for blind spot features.
+- Sign conventions, verified on route 000000a5: `steeringAngleDeg` and driver `steeringTorque` are positive to the left;
+  model/controls curvature and `desiredLateralAccel` are positive to the RIGHT. Check the sign before comparing them.
+- `torqueState.saturated` only turns on after seconds at the limit and stays off through an intersection turn; look at
+  `carControl.actuators.torque` reaching +-1 instead (the drive report does).
+- Steering torque is the limit at low speed: below 15 km/h the torque command sits at +-1 for 19-39% of openpilot's own
+  steering time (2-5% above 40 km/h). Right turns entered above about 10 km/h run wide because the wheel cannot turn
+  fast enough, with or without `LaneTurnDesire`; op's 3 m/s^2 lateral accel clip rarely matters. The Toyota torque limit
+  is a panda safety limit: do not raise it. The learned latAccelFactor is about 1.40-1.46 against 1.99 in CarParams
+  (the car has ET35 wheels since before comma was installed, so there is no before/after data).
 - Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
   (otherwise every gas press looks like a disengagement).
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the

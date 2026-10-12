@@ -186,12 +186,13 @@ def torque(t, desired, actual, saturated=False):
 
 
 class TestLateral(OpenpilotTestCase):
-  def drive(self, v=15., pressed=lambda t: False, error=lambda t: 0.2, saturated=lambda t: False, seconds=10.):
+  def drive(self, v=15., pressed=lambda t: False, error=lambda t: 0.2, at_limit=lambda t: False, seconds=10.):
     msgs = []
     for t in ticks(0., seconds):
-      msgs.append(at(t, carControl={"latActive": True}))
+      msgs.append(at(t, carControl={"latActive": True, "actuators": {"torque": -1. if at_limit(t) else -0.3}}))
       msgs.append(at(t + 0.001, carState={"vEgo": v, "steeringPressed": pressed(t)}))
-      msgs.append(torque(t + 0.002, 1. + error(t), 1., saturated(t)))
+      # torqueState.saturated only turns on after seconds at the limit, so it stays off through a turn
+      msgs.append(torque(t + 0.002, 1. + error(t), 1.))
     return msgs
 
   def test_error_by_speed_bin(self):
@@ -206,7 +207,7 @@ class TestLateral(OpenpilotTestCase):
     assert abs(r["bins"]["40-80"]["time_s"] - 5.) < 0.05
 
   def test_overrides_and_saturation(self):
-    msgs = self.drive(pressed=lambda t: 2. <= t < 2.5 or 6. <= t < 6.5, saturated=lambda t: 8. <= t < 9.)
+    msgs = self.drive(pressed=lambda t: 2. <= t < 2.5 or 6. <= t < 6.5, at_limit=lambda t: 8. <= t < 9.)
     msgs.append(at(8.5, onroadEvents=[{"name": EventName.steerSaturated}]))
     r = lateral_report(ordered(msgs))
     assert r["overrides"] == 2 and abs(r["overrides_per_10min"] - 2 / (10. / 600.)) < 1.
@@ -286,7 +287,9 @@ class TestOverrides(OpenpilotTestCase):
       elif t < 3.5:
         v = 15.
       pressed = any(start <= t < start + 0.3 for start in (1., 4., 7., 10., 13.))
-      trq = -50. if 13. <= t < 13.3 else 50.
+      # desiredLateralAccel > 0 steers right while driver steeringTorque > 0 steers left (route 000000a5):
+      # the driver helps the +0.5 request with negative torque and opposes it at 13 s with positive torque
+      trq = 50. if 13. <= t < 13.3 else -50.
       msgs.append(at(t, carState={"vEgo": v, "steeringAngleDeg": angle, "rightBlinker": blinker,
                                   "steeringPressed": pressed, "steeringTorque": trq}))
       msgs.append(at(t + 0.001, carControl={"latActive": True}))

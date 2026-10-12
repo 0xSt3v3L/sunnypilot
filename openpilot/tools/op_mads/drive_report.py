@@ -30,6 +30,7 @@ SPEED_BINS = (("10-40", 10., 40.), ("40-80", 40., 80.), ("80+", 80., math.inf)) 
 WORST_COUNT = 5
 WORST_SPACING = 5.  # s between reported worst tracking moments
 OVERRIDE_DEBOUNCE = 1.  # s; a press within this time of the last release is the same override
+TORQUE_LIMIT = 0.99  # |carControl.actuators.torque| at the steering torque limit
 OVERRIDE_TURN_SPEED = 40. / 3.6  # m/s; an override with a blinker below this is a turn
 OVERRIDE_LOW_SPEED = 20. / 3.6
 PHANTOM_ACCEL = -1.  # m/s^2 of commanded acceleration that counts as braking
@@ -277,7 +278,8 @@ def lateral_report(msgs) -> dict:
   for t, ts, dt in _durations(torque):
     control, car = _at(cc, t), _at(cs, t)
     lat_active = control is not None and control.latActive
-    sat = lat_active and ts.saturated
+    # torqueState.saturated needs seconds at the limit and stays off through a turn; look at the command itself
+    sat = lat_active and abs(control.actuators.torque) >= TORQUE_LIMIT
     sat_s += dt if sat else 0.
     sat_episodes += sat and not prev_sat
     prev_sat = sat
@@ -336,7 +338,8 @@ def override_report(msgs) -> dict:
       category = "low speed"
     else:
       category = "straight"
-    opposing = ts is not None and ts.desiredLateralAccel * car.steeringTorque < 0
+    # desiredLateralAccel > 0 steers right while driver steeringTorque > 0 steers left (verified on route 000000a5)
+    opposing = ts is not None and ts.desiredLateralAccel * car.steeringTorque > 0
     events.append({"t": a, "duration": b - a, "category": category, "opposing": bool(opposing), "v_kph": car.vEgo * MS_TO_KPH,
                    "full": bool(s is not None and s.enabled)})
   categories = {}
@@ -476,7 +479,7 @@ def format_report(msgs, t0: float | None = None) -> str:
   lines.append("== lateral tracking")
   for name, st in lat["bins"].items():
     lines.append(f"  {name:6s} km/h  {st['time_s'] / 60:5.1f} min  error mean {_f(st['mean'], '.2f')}  p95 {_f(st['p95'], '.2f')} m/s^2")
-  lines.append(f"  saturated {lat['saturated_s']:.1f}s in {lat['saturated_episodes']} episodes  driver overrides {lat['overrides']} " +
+  lines.append(f"  torque command at the limit {lat['saturated_s']:.1f}s in {lat['saturated_episodes']} episodes  driver overrides {lat['overrides']} " +
                f"({_f(lat['overrides_per_10min'], '.1f')} per 10 min of steering)")
   lines += [f"  {x['t'] - t0:8.1f}s  steerSaturated  {_f(x['v_kph'], '.0f')} km/h  desired {_f(x['desired'], '+.2f')} m/s^2"
             for x in lat["steer_saturated"]]
