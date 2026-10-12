@@ -60,11 +60,12 @@ def contact_sheet(tiles, cols: int = COLS) -> Image.Image:
   return sheet
 
 
-def fetch_qcamera(route: Path, seg: int) -> Path:
-  dst = route / str(seg) / "qcamera.ts"
+def fetch_segment_file(route: Path, seg: int, name: str = "qcamera.ts") -> Path:
+  """A file of the segment, copied from the device if it is not there yet."""
+  dst = route / str(seg) / name
   if not dst.is_file():
-    part = dst.with_name("qcamera.ts.part")
-    subprocess.run(["scp", "-q", "-o", "ConnectTimeout=8", f"{DEVICE}:{REALDATA}/{route.name}--{seg}/qcamera.ts", str(part)], check=True)
+    part = dst.with_name(name + ".part")
+    subprocess.run(["scp", "-q", "-o", "ConnectTimeout=8", f"{DEVICE}:{REALDATA}/{route.name}--{seg}/{name}", str(part)], check=True)
     part.rename(dst)
   return dst
 
@@ -94,7 +95,7 @@ def main() -> None:
   jobs = frame_jobs(_Series((t, e) for t, e in _of(msgs, ENCODE_IDX)), [t0 + s for s in args.seconds])
   images = {}
   for seg in sorted({seg for _, seg, _ in jobs}):
-    for idx, img in decode(fetch_qcamera(route, seg), {i for _, s, i in jobs if s == seg}).items():
+    for idx, img in decode(fetch_segment_file(route, seg), {i for _, s, i in jobs if s == seg}).items():
       images[(seg, idx)] = img
   tiles = [(images[(seg, idx)], list(captions(msgs, t, t0))) for t, seg, idx in jobs if (seg, idx) in images]
   out = Path(args.output or route / f"frames_{args.seconds[0]:.0f}.jpg")
