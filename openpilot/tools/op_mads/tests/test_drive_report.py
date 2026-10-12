@@ -2,7 +2,7 @@ import math
 from openpilot.cereal import log
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.tools.op_mads.drive_report import (summary, mads_time, standstill_report, lane_turn_report, road_edge_report, bsm_report,
-                                                  curve_report, format_report)
+                                                  curve_report, lateral_report, chestnut_report, disengagements, format_report)
 
 EventName = log.OnroadEvent.EventName
 LaneChangeState = log.LaneChangeState
@@ -112,10 +112,29 @@ class TestRoadEdgeAndBsm(OpenpilotTestCase):
     assert abs(r["left_s"] - 1.) < 0.06 and r["right_s"] == 0.
     assert r["blocked"] == 1
 
+  def test_road_edge_blocked_times(self):
+    msgs = [at(t, modelDataSP={"roadEdge": {"leftDetected": True}}) for t in ticks(0., 2., DT_MDL)]
+    msgs += [at(t, carState={"steeringPressed": True, "steeringTorque": 50.}) for t in ticks(0.5, 1.)]
+    msgs += [at(t + 0.001, modelV2={"meta": {"laneChangeState": LaneChangeState.preLaneChange, "laneChangeDirection": LaneChangeDirection.left}})
+             for t in ticks(0.6, 0.8, DT_MDL)]
+    assert [round(t, 2) for t in road_edge_report(ordered(msgs))["blocked_times"]] == [0.6]
+
   def test_bsm_events(self):
     pattern = [False, True, True, False, True, False]
-    msgs = [at(i * DT, carState={"leftBlindspot": v}) for i, v in enumerate(pattern)]
-    assert bsm_report(msgs) == {"left_events": 2, "right_events": 0}
+    msgs = [at(i * DT, carState={"leftBlindspot": v, "vEgo": 3. + i}) for i, v in enumerate(pattern)]
+    r = bsm_report(msgs)
+    assert r["left_events"] == 2 and r["right_events"] == 0
+    assert [e["side"] for e in r["events"]] == ["left", "left"]
+    assert abs(r["lowest_kph"] - 4. * 3.6) < 1e-6
+
+  def test_right_turn_with_right_blind_spot(self):
+    msgs = [at(0., carState={"vEgo": 4., "rightBlinker": True, "rightBlindspot": False}),
+            at(0.1, carState={"vEgo": 4., "rightBlinker": True, "rightBlindspot": True}),
+            at(0.2, carState={"vEgo": 15., "leftBlinker": True, "leftBlindspot": False}),
+            at(0.3, carState={"vEgo": 15., "leftBlinker": True, "leftBlindspot": True})]
+    r = bsm_report(msgs)
+    assert r["right_turn_hits"] == 1
+    assert [e["blinker"] for e in r["events"]] == [True, True]
 
 
 class TestCurves(OpenpilotTestCase):
@@ -150,8 +169,79 @@ class TestCurves(OpenpilotTestCase):
     assert curve_report(ordered(msgs)) == []
 
 
+def torque(t, desired, actual, saturated=False):
+  return at(t, controlsState={"lateralControlState": {"torqueState": {"desiredLateralAccel": desired, "actualLateralAccel": actual,
+                                                                      "saturated": saturated}}})
+
+
+class TestLateral(OpenpilotTestCase):
+  def drive(self, v=15., pressed=lambda t: False, error=lambda t: 0.2, saturated=lambda t: False, seconds=10.):
+    msgs = []
+    for t in ticks(0., seconds):
+      msgs.append(at(t, carControl={"latActive": True}))
+      msgs.append(at(t + 0.001, carState={"vEgo": v, "steeringPressed": pressed(t)}))
+      msgs.append(torque(t + 0.002, 1. + error(t), 1., saturated(t)))
+    return msgs
+
+  def test_error_by_speed_bin(self):
+    r = lateral_report(ordered(self.drive(v=15.)))  # 54 km/h
+    b = r["bins"]["40-80"]
+    assert abs(b["mean"] - 0.2) < 1e-4 and abs(b["p95"] - 0.2) < 1e-4 and abs(b["time_s"] - 10.) < 0.05
+    assert r["bins"]["10-40"]["time_s"] == 0.
+
+  def test_ignores_driver_steering_and_low_speed(self):
+    assert lateral_report(ordered(self.drive(v=2.)))["bins"]["10-40"]["time_s"] == 0.
+    r = lateral_report(ordered(self.drive(pressed=lambda t: t < 5.)))
+    assert abs(r["bins"]["40-80"]["time_s"] - 5.) < 0.05
+
+  def test_overrides_and_saturation(self):
+    msgs = self.drive(pressed=lambda t: 2. <= t < 2.5 or 6. <= t < 6.5, saturated=lambda t: 8. <= t < 9.)
+    msgs.append(at(8.5, onroadEvents=[{"name": EventName.steerSaturated}]))
+    r = lateral_report(ordered(msgs))
+    assert r["overrides"] == 2 and abs(r["overrides_per_10min"] - 2 / (10. / 600.)) < 1.
+    assert r["saturated_episodes"] == 1 and abs(r["saturated_s"] - 1.) < 0.05
+    assert [round(x["t"], 1) for x in r["steer_saturated"]] == [8.5]
+
+  def test_flickering_press_is_one_override(self):
+    # steeringPressed flickers while the driver rests a hand on the wheel
+    r = lateral_report(ordered(self.drive(pressed=lambda t: 2. <= t < 3. and int(t * 10) % 2 == 0)))
+    assert r["overrides"] == 1
+
+  def test_worst_moments_are_spread(self):
+    r = lateral_report(ordered(self.drive(error=lambda t: 1.5 if 3. <= t < 3.2 else 0.9 if 8. <= t < 8.2 else 0.1)))
+    assert [round(x["t"]) for x in r["worst"][:2]] == [3, 8]
+
+
+class TestChestnut(OpenpilotTestCase):
+  def test_chestnut_health(self):
+    msgs = []
+    for i, t in enumerate(ticks(0., 10., 0.1)):
+      m = log.Event.new_message(chestnutState={"tempC": 40. + i % 10, "memoryTempC": 50., "powerDrawW": 40., "powerLimitW": 100.,
+                                               "gpuUsagePercent": 50, "gpuClockMhz": 1100, "supplyVoltage": 13500 - i,
+                                               "supplyFault": 30 <= i < 32, "pcieLtssm": 120 if i < 50 else 0})
+      m.logMonoTime = int(t * 1e9)
+      m.valid = i % 4 != 0
+      msgs.append(m.as_reader())
+    msgs += [at(t, modelV2={"big": not (5. <= t < 6.)}) for t in ticks(0., 10., DT_MDL)]
+    msgs.append(at(5., onroadEvents=[{"name": EventName.bigModelFailed}]))
+    r = chestnut_report(ordered(msgs))
+    assert r["temp_max"] == 49. and abs(r["power_avg"] - 40.) < 1e-6 and r["power_limit"] == 100.
+    assert r["supply_min_v"] < 13.5 and r["supply_faults"] == 1 and r["ltssm_changes"] == 1
+    assert abs(r["valid_ratio"] - 0.75) < 0.01
+    assert [round(t, 1) for t in r["fallbacks"]] == [5.] and [round(t) for t in r["big_model_failed"]] == [5]
+
+
+class TestDisengagements(OpenpilotTestCase):
+  def test_disengagements(self):
+    msgs = []
+    for t in ticks(0., 4.):
+      msgs.append(at(t, selfdriveState={"enabled": 1. <= t < 2.}))
+      msgs.append(at(t + 0.001, selfdriveStateSP={"mads": {"available": True, "enabled": t < 3.}}))
+    assert [(round(t, 2), k) for t, k in disengagements(ordered(msgs))] == [(2., "disengage"), (3., "mads off")]
+
+
 class TestFormat(OpenpilotTestCase):
   def test_format_has_sections(self):
     text = format_report([car_params()])
-    for title in ("summary", "MADS", "standstill alerts", "lane turns", "road edges", "blind spot", "curves"):
+    for title in ("summary", "MADS", "standstill alerts", "lane turns", "road edges", "blind spot", "curves", "lateral tracking", "chestnut"):
       assert title in text, title

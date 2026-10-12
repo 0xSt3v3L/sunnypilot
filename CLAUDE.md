@@ -17,7 +17,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Always offroad (`OffroadMode`) | `system/hardware/hardwared.py`, `selfdrive/ui/lib/always_offroad.py`, mici settings |
 | Low-speed turn desire (`LaneTurnDesire`, default off) | `selfdrive/controls/lib/lane_turn.py`, `desire_helper.py`, `modeld.py` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
-| Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, route pull) |
+| Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, route pull) |
 
 Paths in the table are under `openpilot/` unless they start with `opendbc_repo/` or `panda/`.
 
@@ -87,7 +87,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - `openpilot/tools/op_mads/pull_route.sh --list | <route> [dest]` copies rlogs to `<dest>/<route>/<seg>/rlog.zst`
   (`dest` defaults to `OP_MADS_LOGS`). Keep route data outside the repo (size, GPS positions).
 - `drive_report.py <route dir>`: MADS time, standstill alerts and missed stops, lane turns with model curvature, road
-  edges, blind spot, curves (speed before entry vs model `desiredAcceleration`).
+  edges, blind spot onsets with speed (low-speed right turns), curves (speed before entry vs model `desiredAcceleration`),
+  lateral tracking (torque error by speed, saturation, debounced driver overrides) and chestnut health.
+- `problem_map.py <logs dir>`: a Leaflet map of problems across all routes (disengagements, saturation, overrides,
+  blocked lane changes, missed alerts, hard model braking in curves). It holds driving positions: keep it next to the
+  logs and do not publish it.
 - `mads_replay.py <route dir>`: replays selfdrived and compares MADS / engagement transitions with the logged run.
 - Run both from the test copy with `PYTHONPATH=<worktree>/opendbc_repo:$PWD .venv/bin/python <script> <route dir>`.
 
@@ -102,6 +106,7 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   A mismatch behaves like stock `controlsMismatch`, and the panda still gates steering.
 - The standstill alerts only fire while openpilot does not control longitudinal and after the car first moved.
 - Blind spot: op sets `ToyotaFlags.HAS_BSM` only if `0x3F6` shows up during fingerprinting. Logs suggest this car has
-  BSM but the flag may be missing; verify on an op route before relying on blind spot data.
+  BSM but the flag may be missing; verify on an op route before relying on blind spot data. Per the owner's manual BSM
+  works only above about 16 km/h, so features built on it (e.g. a right-turn scooter warning) cannot cover slower turns.
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the
   `Co-Authored-By` trailer.
