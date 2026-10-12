@@ -30,6 +30,13 @@ enum class State_d6653ec56978643c: uint16_t {
 };
 CAPNP_DECLARE_ENUM(State, d6653ec56978643c);
 CAPNP_DECLARE_SCHEMA(aedffd8f31e7b55d);
+CAPNP_DECLARE_SCHEMA(c37840256b70b67d);
+enum class TurnDirection_c37840256b70b67d: uint16_t {
+  NONE,
+  TURN_LEFT,
+  TURN_RIGHT,
+};
+CAPNP_DECLARE_ENUM(TurnDirection, c37840256b70b67d);
 CAPNP_DECLARE_SCHEMA(d9b36a7a9ab40aff);
 CAPNP_DECLARE_SCHEMA(f35cc4560bbf6ec2);
 CAPNP_DECLARE_SCHEMA(da96579883444c35);
@@ -94,10 +101,12 @@ struct ModelDataSP {
   class Reader;
   class Builder;
   class Pipeline;
+  typedef ::capnp::schemas::TurnDirection_c37840256b70b67d TurnDirection;
+
   struct RoadEdge;
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(aedffd8f31e7b55d, 0, 1)
+    CAPNP_DECLARE_STRUCT_HEADER(aedffd8f31e7b55d, 1, 1)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -584,6 +593,8 @@ public:
   inline bool hasRoadEdge() const;
   inline  ::cereal::ModelDataSP::RoadEdge::Reader getRoadEdge() const;
 
+  inline  ::cereal::ModelDataSP::TurnDirection getLaneTurnDirection() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -618,6 +629,9 @@ public:
   inline  ::cereal::ModelDataSP::RoadEdge::Builder initRoadEdge();
   inline void adoptRoadEdge(::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge>&& value);
   inline ::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge> disownRoadEdge();
+
+  inline  ::cereal::ModelDataSP::TurnDirection getLaneTurnDirection();
+  inline void setLaneTurnDirection( ::cereal::ModelDataSP::TurnDirection value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -2159,6 +2173,20 @@ inline void ModelDataSP::Builder::adoptRoadEdge(
 inline ::capnp::Orphan< ::cereal::ModelDataSP::RoadEdge> ModelDataSP::Builder::disownRoadEdge() {
   return ::capnp::_::PointerHelpers< ::cereal::ModelDataSP::RoadEdge>::disown(_builder.getPointerField(
       ::capnp::bounded<0>() * ::capnp::POINTERS));
+}
+
+inline  ::cereal::ModelDataSP::TurnDirection ModelDataSP::Reader::getLaneTurnDirection() const {
+  return _reader.getDataField< ::cereal::ModelDataSP::TurnDirection>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+
+inline  ::cereal::ModelDataSP::TurnDirection ModelDataSP::Builder::getLaneTurnDirection() {
+  return _builder.getDataField< ::cereal::ModelDataSP::TurnDirection>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS);
+}
+inline void ModelDataSP::Builder::setLaneTurnDirection( ::cereal::ModelDataSP::TurnDirection value) {
+  _builder.setDataField< ::cereal::ModelDataSP::TurnDirection>(
+      ::capnp::bounded<0>() * ::capnp::ELEMENTS, value);
 }
 
 inline bool ModelDataSP::RoadEdge::Reader::getLeftDetected() const {
