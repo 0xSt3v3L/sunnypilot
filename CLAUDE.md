@@ -134,11 +134,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   fast enough, with or without `LaneTurnDesire`; op's 3 m/s^2 lateral accel clip rarely matters. The Toyota torque limit
   is a panda safety limit: do not raise it. The learned latAccelFactor is about 1.40-1.46 against 1.99 in CarParams
   (the car has ET35 wheels since before comma was installed, so there is no before/after data).
-- Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
-  (otherwise every gas press looks like a disengagement).
-- Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the
-  `Co-Authored-By` trailer.
 - modeld computes curvature as the model's lateral accel / max(1, v)^2, so near a stop a tiny request becomes a large
   curvature. This model asks for +0.015 to +0.022 m/s^2 (right) while stopping, which turned the wheel 20-45 deg right
   before every stop (sunnypilot's own modeld derives curvature differently and did not). `low_speed_lat.py` drops
   requests under 0.03 m/s^2 below 3 m/s without a blinker; real low-speed turns ask for 0.15+ m/s^2 and are untouched.
+- Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
+  (otherwise every gas press looks like a disengagement).
+- Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the
+  `Co-Authored-By` trailer.
