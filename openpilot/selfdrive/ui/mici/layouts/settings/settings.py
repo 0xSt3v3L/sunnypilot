@@ -1,6 +1,9 @@
 from openpilot.common.params import Params
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigButton
+from openpilot.selfdrive.ui.lib.always_offroad import always_offroad_button, set_always_offroad, ENABLE_ONROAD, ENABLE_OFFROAD, DISABLE
+from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog
+from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.mici.layouts.settings.toggles import TogglesLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.network.network_layout import NetworkLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.device.device_layout import DeviceLayoutMici
@@ -44,16 +47,47 @@ class SettingsLayout(NavScroller):
     firehose_btn = SettingsBigButton("firehose", "", gui_app.texture("icons_mici/settings/firehose.png", 52, 62))
     firehose_btn.set_click_callback(lambda: gui_app.push_widget(firehose_panel))
 
+    # always offroad: only one of these buttons is visible at a time
+    icon_enable_offroad = gui_app.texture("icons_mici/always_offroad.png", 110, 110)
+    enable_offroad_btn_onroad = BigCircleButton(icon_enable_offroad, red=True)
+    enable_offroad_btn_onroad.set_click_callback(lambda: self._handle_always_offroad(True))
+    enable_offroad_btn_onroad.set_visible(lambda: always_offroad_button(ui_state.started, ui_state.always_offroad) == ENABLE_ONROAD)
+
+    enable_offroad_btn_offroad = BigCircleButton(icon_enable_offroad, red=True)
+    enable_offroad_btn_offroad.set_click_callback(lambda: self._handle_always_offroad(True))
+    enable_offroad_btn_offroad.set_visible(lambda: always_offroad_button(ui_state.started, ui_state.always_offroad) == ENABLE_OFFROAD)
+
+    disable_offroad_btn = BigCircleButton(gui_app.texture("icons_mici/disable_offroad.png", 110, 110))
+    disable_offroad_btn.set_click_callback(lambda: self._handle_always_offroad(False))
+    disable_offroad_btn.set_visible(lambda: always_offroad_button(ui_state.started, ui_state.always_offroad) == DISABLE)
+
     self._scroller.add_widgets([
+      disable_offroad_btn,
+      enable_offroad_btn_onroad,
       toggles_btn,
       network_btn,
       self._device_button,
       software_btn,
       firehose_btn,
       developer_btn,
+      enable_offroad_btn_offroad,
     ])
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
+
+  def _handle_always_offroad(self, enable: bool):
+    def set_status(status: bool):
+      if set_always_offroad(self._params, status, ui_state.engaged):
+        ui_state.always_offroad = status
+
+    slider_icon = gui_app.texture("icons_mici/settings/device/lkas.png", 110, 110)
+    if not enable:
+      dlg = BigConfirmationDialog("slide to exit always offroad", slider_icon, confirm_callback=lambda: set_status(False))
+    elif ui_state.engaged:
+      dlg = BigDialog("disengage to enable always offroad", "")
+    else:
+      dlg = BigConfirmationDialog("slide to force offroad", slider_icon, red=True, confirm_callback=lambda: set_status(True))
+    gui_app.push_widget(dlg)
 
   def show_pairing(self):
     gui_app.push_widget(self)

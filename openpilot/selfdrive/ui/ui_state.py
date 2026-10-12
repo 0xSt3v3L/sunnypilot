@@ -91,6 +91,7 @@ class UIState:
     self.is_release = self.params.get_bool("IsReleaseBranch")
     self.always_on_dm: bool = self.params.get_bool("AlwaysOnDM")
     self.show_debug_info: bool = self.params.get_bool("ShowDebugInfo")
+    self.always_offroad: bool = self.params.get_bool("OffroadMode")
     self.experimental_mode: bool = self.params.get_bool("ExperimentalMode")
     self.chestnut_present: bool = False
     self.chestnut_compiled: bool = chestnut_compiled()
@@ -247,6 +248,7 @@ class UIState:
     self.is_metric = self.params.get_bool("IsMetric")
     self.always_on_dm = self.params.get_bool("AlwaysOnDM")
     self.show_debug_info = self.params.get_bool("ShowDebugInfo")
+    self.always_offroad = self.params.get_bool("OffroadMode")
     self.experimental_mode = self.params.get_bool("ExperimentalMode")
     self.chestnut_active = self.params.get("ChestnutActive")
     self.chestnut_loading = self.params.get_bool("ChestnutLoading")
