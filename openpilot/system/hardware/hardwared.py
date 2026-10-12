@@ -115,6 +115,12 @@ def set_offroad_alert_if_changed(offroad_alert: str, show_alert: bool, extra_tex
   prev_offroad_states[offroad_alert] = (show_alert, extra_text)
   set_offroad_alert(offroad_alert, show_alert, extra_text)
 
+def set_always_offroad_conditions(startup_conditions: dict, onroad_conditions: dict, offroad_mode: bool) -> None:
+  # user-forced offroad (always offroad), ported from sunnypilot; OffroadMode is cleared on manager start
+  startup_conditions["not_always_offroad"] = not offroad_mode
+  onroad_conditions["not_always_offroad"] = not offroad_mode
+
+
 def touch_thread(end_event):
   count = 0
 
@@ -361,6 +367,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     # ensure device is fully booted
     startup_conditions["device_booted"] = startup_conditions.get("device_booted", False) or HARDWARE.booted()
+
+    set_always_offroad_conditions(startup_conditions, onroad_conditions, params.get_bool("OffroadMode"))
 
     # if the temperature enters the danger zone, go offroad to cool down
     onroad_conditions["device_temp_good"] = thermal_status < ThermalStatus.critical
