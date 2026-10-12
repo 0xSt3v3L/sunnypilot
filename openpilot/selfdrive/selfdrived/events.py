@@ -1130,6 +1130,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       AlertStatus.normal, AlertSize.small,
       Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
+
+  # right turn with the right blind spot occupied (scooters passing on the right)
+  EventName.rightTurnBlindSpot: {
+    ET.PERMANENT: Alert(
+      "Vehicle on Right",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.HIGH, VisualAlert.none, AudibleAlert.promptRepeat, 2.),
+  },
 }
 
 

@@ -23,6 +23,7 @@ from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.mads import Mads
 from openpilot.selfdrive.selfdrived.standstill_alerts import StandstillAlerts
+from openpilot.selfdrive.selfdrived.right_turn_alert import RightTurnAlert
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -135,6 +136,7 @@ class SelfdriveD:
     self.state_machine = StateMachine()
     self.mads = Mads(self.CP)
     self.standstill_alerts = StandstillAlerts()
+    self.right_turn_alert = RightTurnAlert()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     # Determine startup event
@@ -473,6 +475,8 @@ class SelfdriveD:
       self.events.add(EventName.greenLight)
     if lead_departed:
       self.events.add(EventName.leadDeparted)
+    if self.right_turn_alert.update(CS):
+      self.events.add(EventName.rightTurnBlindSpot)
 
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
