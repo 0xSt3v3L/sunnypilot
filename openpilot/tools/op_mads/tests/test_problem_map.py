@@ -58,10 +58,10 @@ class TestProblemMap(OpenpilotTestCase):
       assert kind in html
 
   def test_tiles_work_from_a_local_file(self):
-    # the OSM tile servers require a Referer, which a page opened from file:// does not send
+    # the OSM tile servers require a Referer, which a page opened from file:// does not send, and CARTO now needs an API key
     html = render_html([])
-    assert "basemaps.cartocdn.com" in html and "&copy; CARTO" in html and "OpenStreetMap contributors" in html
-    assert "tile.openstreetmap.org" not in html
+    assert "server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/" in html and "Esri" in html
+    assert "tile.openstreetmap.org" not in html and "cartocdn" not in html
 
   def test_driver_overrides_hidden_by_default(self):
     html = render_html([])

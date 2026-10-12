@@ -99,9 +99,9 @@ const POINTS = {_js(points)};
 const KINDS = {_js(KINDS)};
 const HIDDEN = {_js(list(HIDDEN))};
 const map = L.map("map");
-// CARTO tiles: the OSM tile servers block pages opened from file://, which send no Referer
-L.tileLayer("https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png",
-            {{subdomains: "abcd", maxZoom: 20, attribution: "&copy; OpenStreetMap contributors &copy; CARTO"}}).addTo(map);
+// Esri tiles: the OSM tile servers block pages opened from file://, which send no Referer, and CARTO needs an API key
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{{z}}/{{y}}/{{x}}",
+            {{maxZoom: 19, attribution: "Tiles &copy; Esri"}}).addTo(map);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({{"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}})[c]);
 const layers = {{}};
 for (const [kind, color] of Object.entries(KINDS)) {{
