@@ -80,8 +80,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - `deploy.py --dry-run` runs the preflight; `deploy.py --reboot --trailer "Co-Authored-By: ..."` deploys and reboots.
 - Device scons is at `/usr/local/venv/bin/scons` (not on the ssh PATH).
 - op flashes the chestnut firmware only while offroad; after switching branches the chestnut may need a manual flash.
-- The big driving model runs only on the chestnut (compiled for `USB+AMD:LLVM`, no ONNX available). The Mac can run the
-  small model via ONNX + METAL, not the big one.
+- The device's big driving model is commaai `6f4c0faf1f` "Mountain Dew Model (#39047)", checkpoint `.../8d736683.../12864`,
+  shipped only as a `USB+AMD:LLVM` pkl. comma did not publish its ONNX; it was rebuilt from the device pkl's weights on
+  top of the public `870a4823` export and checked against logged `modelV2` by replay. The files, METAL builds (about
+  30 ms a frame) and how they were made live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README).
+  A new big model on the device means rebuilding that ONNX.
 
 ## Logs and analysis
 
@@ -102,6 +105,12 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   logs and do not publish it.
 - `mads_replay.py <route dir>`: replays selfdrived and compares MADS / engagement transitions with the logged run.
 - Run both from the test copy with `PYTHONPATH=<worktree>/opendbc_repo:$PWD .venv/bin/python <script> <route dir>`.
+- `big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab]`: runs the big model on the Mac (METAL) from
+  `fcamera.hevc` / `ecamera.hevc` (copied from the device when missing, about 75 MB a segment) and compares with the
+  logged modelV2, plus model curvature at each low-speed blinker turn. `logged` feeds the desire the device fed (rebuilt
+  from the previous frame's `laneChangeState` and `laneTurnDirection`); `ab` runs LaneTurnDesire off and on side by side.
+  The first 10 s are model warm-up. Needs `OP_MADS_MODELS`, `DEV=METAL` and `$PWD/tinygrad_repo` on `PYTHONPATH`.
+  Encoded video makes the replay inexact: rmse/std about 0.03-0.2 against the log is the floor.
 
 ## Conventions and invariants
 
