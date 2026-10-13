@@ -417,6 +417,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.NO_ENTRY: NoEntryAlert("Big Model Loading"),
   },
 
+  EventName.bigModelReady: {
+    ET.PERMANENT: Alert(
+      "Big Model Ready",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 2.),
+  },
+
   EventName.bigModelFailed: {
     ET.SOFT_DISABLE: soft_disable_alert("Big Model Failed"),
     ET.PERMANENT: NormalPermanentAlert("Big Model Failed ", "Restart the car to retry,\nsmall model is still available", duration=20.),
@@ -612,6 +620,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.laneChangeBlocked: {
     ET.WARNING: Alert(
       "Car Detected in Blindspot",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+  },
+
+  # an assisted lane change toward a road edge is blocked like one toward a car in the blind spot
+  EventName.laneChangeRoadEdge: {
+    ET.WARNING: Alert(
+      "Lane Change Unavailable: Road Edge",
       "",
       AlertStatus.userPrompt, AlertSize.small,
       Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
@@ -1131,7 +1148,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
-  # right turn with the right blind spot occupied (scooters passing on the right)
+  # low-speed turn with the blind spot on the blinker side occupied (scooters passing)
+  EventName.leftTurnBlindSpot: {
+    ET.PERMANENT: Alert(
+      "Vehicle on Left",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.HIGH, VisualAlert.none, AudibleAlert.promptRepeat, 2.),
+  },
+
   EventName.rightTurnBlindSpot: {
     ET.PERMANENT: Alert(
       "Vehicle on Right",
@@ -1182,6 +1207,13 @@ if HARDWARE.get_device_type() == 'mici':
     EventName.laneChangeBlocked: {
       ET.WARNING: Alert(
         "Car in Blindspot",
+        "",
+        AlertStatus.userPrompt, AlertSize.small,
+        Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+    },
+    EventName.laneChangeRoadEdge: {
+      ET.WARNING: Alert(
+        "Road Edge",
         "",
         AlertStatus.userPrompt, AlertSize.small,
         Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),

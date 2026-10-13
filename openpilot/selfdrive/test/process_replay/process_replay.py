@@ -438,7 +438,7 @@ CONFIGS = [
       "longitudinalPlan", "deviceMotion", "lateralDelay", "vehicleParameters", "radarState", "modelV2",
       "cabinCameraState", "narrowRoadCameraState", "wideRoadCameraState", "managerState", "lateralTorqueParameters",
       "accelerometer", "gyroscope", "carOutput", "gpsLocationExternal", "gpsLocation", "controlsState",
-      "carControl", "driverAssistance", "alertDebug",
+      "carControl", "driverAssistance", "alertDebug", "modelDataSP",
     ],
     subs=["selfdriveState", "selfdriveStateSP", "onroadEvents"],
     ignore=["logMonoTime"],

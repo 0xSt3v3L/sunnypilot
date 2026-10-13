@@ -23,7 +23,7 @@ from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.mads import Mads
 from openpilot.selfdrive.selfdrived.standstill_alerts import StandstillAlerts
-from openpilot.selfdrive.selfdrived.right_turn_alert import RightTurnAlert
+from openpilot.selfdrive.selfdrived.turn_blind_spot_alert import TurnBlindSpotAlert
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.common.version import get_build_metadata
@@ -85,7 +85,7 @@ class SelfdriveD:
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
-    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan']
+    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan', 'modelDataSP']
     if SIMULATION:
       ignore += ['cabinCameraState', 'managerState']
     if REPLAY:
@@ -95,7 +95,7 @@ class SelfdriveD:
                                    'carOutput', 'driverMonitoringState', 'longitudinalPlan', 'deviceMotion', 'lateralDelay',
                                    'managerState', 'vehicleParameters', 'radarState', 'lateralTorqueParameters',
                                    'controlsState', 'carControl', 'driverAssistance', 'alertDebug', 'userBookmark',
-                                   'lateralManeuverPlan'] + \
+                                   'lateralManeuverPlan', 'modelDataSP'] + \
                                    self.camera_packets + self.sensor_packets + self.gps_packets,
                                   ignore_alive=ignore, ignore_avg_freq=ignore,
                                   ignore_valid=ignore, frequency=int(1/DT_CTRL))
@@ -136,7 +136,7 @@ class SelfdriveD:
     self.state_machine = StateMachine()
     self.mads = Mads(self.CP)
     self.standstill_alerts = StandstillAlerts()
-    self.right_turn_alert = RightTurnAlert()
+    self.turn_blind_spot_alert = TurnBlindSpotAlert()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
     # Determine startup event
@@ -166,13 +166,15 @@ class SelfdriveD:
       self.startup_event = None
 
     loading = self.params.get_bool("ChestnutLoading")
+    big_active = self.params.get("ChestnutActive")  # modeld sets it before it clears ChestnutLoading
     if self.big_model_loading and not loading:
       self.big_model_ready_t = time.monotonic()
+      if big_active:
+        self.events.add(EventName.bigModelReady)
     self.big_model_loading = loading
     if self.big_model_loading:
       self.events.add(EventName.bigModelLoading)
 
-    big_active = self.params.get("ChestnutActive")
     chestnut_present = self.sm['deviceState'].chestnutPresent
     model_unavailable = big_active is True and self.sm.seen['modelV2'] and not self.sm.alive['modelV2']
     big_failed = big_active is False or model_unavailable or (self.big_model_active and not chestnut_present)
@@ -319,9 +321,13 @@ class SelfdriveD:
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:
       direction = self.sm['modelV2'].meta.laneChangeDirection
+      road_edge = self.sm['modelDataSP'].roadEdge
       if (CS.leftBlindspot and direction == LaneChangeDirection.left) or \
          (CS.rightBlindspot and direction == LaneChangeDirection.right):
         self.events.add(EventName.laneChangeBlocked)
+      elif (road_edge.leftDetected and direction == LaneChangeDirection.left) or \
+           (road_edge.rightDetected and direction == LaneChangeDirection.right):
+        self.events.add(EventName.laneChangeRoadEdge)
       else:
         if direction == LaneChangeDirection.left:
           self.events.add(EventName.preLaneChangeLeft)
@@ -475,7 +481,10 @@ class SelfdriveD:
       self.events.add(EventName.greenLight)
     if lead_departed:
       self.events.add(EventName.leadDeparted)
-    if self.right_turn_alert.update(CS):
+    left_blind_spot, right_blind_spot = self.turn_blind_spot_alert.update(CS)
+    if left_blind_spot:
+      self.events.add(EventName.leftTurnBlindSpot)
+    if right_blind_spot:
       self.events.add(EventName.rightTurnBlindSpot)
 
   def data_sample(self):

@@ -153,6 +153,9 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     greenLight @119;
     leadDeparted @120;
     rightTurnBlindSpot @121;
+    leftTurnBlindSpot @122;
+    bigModelReady @123;
+    laneChangeRoadEdge @124;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;
