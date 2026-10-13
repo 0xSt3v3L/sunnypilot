@@ -7,7 +7,8 @@ from openpilot.selfdrive.controls.lib.lane_turn import TurnDirection
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from openpilot.tools.op_mads.big_model_replay import (FrameSource, compare_rows, desire_from_state, desire_vector,
-                                                      nv12_buffer, parse_segments, turn_events)
+                                                      extra_lat_action_t, nv12_buffer, onset_time, parse_extras,
+                                                      parse_segments, turn_events)
 
 
 def car_state(v=10., left=False, right=False, pressed=False, torque=0., left_bsm=False):
@@ -89,6 +90,21 @@ class TestBigModelReplay(OpenpilotTestCase):
     series = [(0., "turnRight"), (1., "none"), (2., "turnRight"), (3., "none"), (6., "turnRight"), (7., "none")]
     assert turn_events(series) == [(0., 3., "turnRight"), (6., 7., "turnRight")]
     assert turn_events([(0., "turnRight"), (1., "turnLeft"), (2., "none")]) == [(0., 1., "turnRight"), (1., 2., "turnLeft")]
+
+  def test_onset_time(self):
+    t = np.arange(0., 5., 0.5)
+    c = np.array([0., 0., -.02, -.05, -.08, -.1, -.1, -.05, 0., 0.])
+    assert onset_time(t, c, start=0., end=4.5, threshold=.05) == 1.5
+    assert onset_time(t, c, start=2., end=4.5, threshold=.05) == 2.
+    assert onset_time(t, c, start=0., end=4.5, threshold=.2) is None
+
+  def test_extra_lat_action_t(self):
+    assert extra_lat_action_t(car_state(v=5., right=True), .3) == .3
+    assert extra_lat_action_t(car_state(v=5.), .3) == 0.
+    assert extra_lat_action_t(car_state(v=20., right=True), .3) == 0.
+
+  def test_parse_extras(self):
+    assert parse_extras("0.3,0.6") == [.3, .6]
 
   def test_parse_segments(self):
     assert parse_segments(None, [0, 1, 2]) == [0, 1, 2]

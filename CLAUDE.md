@@ -105,10 +105,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   logs and do not publish it.
 - `mads_replay.py <route dir>`: replays selfdrived and compares MADS / engagement transitions with the logged run.
 - Run both from the test copy with `PYTHONPATH=<worktree>/opendbc_repo:$PWD .venv/bin/python <script> <route dir>`.
-- `big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab]`: runs the big model on the Mac (METAL) from
+- `big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab|action_t]`: runs the big model on the Mac (METAL) from
   `fcamera.hevc` / `ecamera.hevc` (copied from the device when missing, about 75 MB a segment) and compares with the
   logged modelV2, plus model curvature at each low-speed blinker turn. `logged` feeds the desire the device fed (rebuilt
-  from the previous frame's `laneChangeState` and `laneTurnDirection`); `ab` runs LaneTurnDesire off and on side by side.
+  from the previous frame's `laneChangeState` and `laneTurnDirection`); `ab` runs LaneTurnDesire off and on side by side;
+  `action_t` adds `--extras` seconds to the model's lateral action time in low-speed blinker turns.
   The first 10 s are model warm-up. Needs `OP_MADS_MODELS`, `DEV=METAL` and `$PWD/tinygrad_repo` on `PYTHONPATH`.
   Encoded video makes the replay inexact: rmse/std about 0.03-0.2 against the log is the floor.
 

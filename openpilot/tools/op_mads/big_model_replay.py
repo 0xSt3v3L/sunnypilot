@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Replay the device's big driving model on the Mac from a route's full-resolution video.
 
-usage: big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab]
+usage: big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab|action_t] [--extras 0.3,0.6]
 
 logged: the desire the device fed the model, rebuilt from the log, so the output can be checked against the logged
         modelV2 (the replay runs on the encoded video, so it is not exact).
 ab:     two runs over the same frames, LaneTurnDesire off and on; each recomputes its desire with DesireHelper and RELC
         from its own outputs, as modeld does.
-Both print a modelV2 comparison and, for every low-speed blinker turn, the model curvature after the turn starts.
+action_t: the logged desire, plus runs that ask the model for its lateral action that many seconds later (--extras)
+        while below the lane turn speed with one blinker on, to see how much earlier a turn's curvature comes.
+All print a modelV2 comparison and, for every low-speed blinker turn, the model curvature after the turn starts and
+how long it takes to reach half the first run's peak.
 
 Model files come from OP_MADS_MODELS (see its README). Missing fcamera.hevc / ecamera.hevc segments are copied from
 the device (OP_MADS_DEVICE). Run from the test copy with
@@ -49,6 +52,21 @@ def parse_segments(spec: str | None, available: list[int]) -> list[int]:
   if missing:
     raise SystemExit(f"segments without rlog.zst: {missing}")
   return wanted
+
+
+def parse_extras(spec: str) -> list[float]:
+  return [float(x) for x in spec.split(",") if x]
+
+
+def extra_lat_action_t(car_state, extra: float) -> float:
+  """extra seconds of lateral action time while a lane turn would be active (low speed, one blinker)."""
+  return extra if lane_turn_direction(car_state, True) != TurnDirection.none else 0.
+
+
+def onset_time(t: np.ndarray, curvature: np.ndarray, start: float, end: float, threshold: float) -> float | None:
+  """First time in [start, end] where |curvature| reaches threshold, or None."""
+  sel = (t >= start) & (t <= end) & (np.abs(curvature) >= threshold)
+  return float(t[sel][0]) if sel.any() else None
 
 
 def desire_from_state(turn_direction, lane_change_state, lane_change_direction) -> int:
@@ -180,10 +198,10 @@ class Buf:
 
 class Run:
   """One model instance with its own desire state; lane_turn None feeds the logged desire."""
-  def __init__(self, name: str, model, lane_turn: bool | None):
+  def __init__(self, name: str, model, lane_turn: bool | None, action_t_extra: float = 0.):
     from openpilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
     from openpilot.selfdrive.modeld.fill_model_msg import PublishState
-    self.name, self.model, self.lane_turn = name, model, lane_turn
+    self.name, self.model, self.lane_turn, self.action_t_extra = name, model, lane_turn, action_t_extra
     self.dh, self.relc, self.publish_state = DesireHelper(), RoadEdgeLaneChangeController(), PublishState()
     self.prev_action = log.ModelDataV2.Action()
     self.rows: list[dict[str, float]] = []
@@ -193,7 +211,10 @@ class Run:
     from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg
     if self.lane_turn is not None:
       desire = self.dh.desire
-    out = self.model.run(bufs, transforms, inputs | {"desire_pulse": desire_vector(desire)})
+    lat_action_t += extra_lat_action_t(car_state, self.action_t_extra)
+    inputs = inputs | {"desire_pulse": desire_vector(desire),
+                       "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32)}
+    out = self.model.run(bufs, transforms, inputs)
     self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego,
                                                 blinker=car_state.leftBlinker or car_state.rightBlinker)
     msg = messaging.new_message("modelV2")
@@ -221,7 +242,7 @@ def load_model(md, models: Path, w: int, h: int):
   return model
 
 
-def replay(route: Path, segments: list[int], mode: str, models: Path):
+def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.3, 0.6)):
   from openpilot.common.realtime import DT_MDL
   from openpilot.common.transformations.camera import DEVICE_CAMERAS
   from openpilot.common.transformations.model import get_warp_matrix
@@ -238,8 +259,12 @@ def replay(route: Path, segments: list[int], mode: str, models: Path):
   main, extra = (Camera(route, (k, of[k]), w, h) for k in VIDEOS)
 
   model = load_model(md, models, w, h)
-  runs = [Run("replay", model, None)] if mode == "logged" else \
-         [Run("lane turn off", model, False), Run("lane turn on", load_model(md, models, w, h), True)]
+  if mode == "logged":
+    runs = [Run("replay", model, None)]
+  elif mode == "ab":
+    runs = [Run("lane turn off", model, False), Run("lane turn on", load_model(md, models, w, h), True)]
+  else:
+    runs = [Run("baseline", model, None)] + [Run(f"action_t +{e:g}s", load_model(md, models, w, h), None, e) for e in extras]
   long_action_t = CP.longitudinalActuatorDelay + md.LONG_SMOOTH_SECONDS + DT_MDL + DT_MDL / 2
   times, speeds, logged_rows, turns, run_ms = [], [], [], [], []
   prev_mv = None
@@ -260,7 +285,7 @@ def replay(route: Path, segments: list[int], mode: str, models: Path):
     traffic_convention = np.zeros(2)
     traffic_convention[int(dms is not None and dms.isRHD)] = 1
     lat_action_t = (lat.lateralDelay if lat is not None else 0.) + md.LAT_SMOOTH_SECONDS + DT_MDL + DT_MDL / 2
-    inputs = {"traffic_convention": traffic_convention, "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32)}
+    inputs = {"traffic_convention": traffic_convention}
     v_ego = max(cs.vEgo, 0.)
     st = time.perf_counter()
     for r in runs:
@@ -288,14 +313,17 @@ def report(t0: float, times, speeds, logged_rows, runs, turns, run_ms) -> str:
 
   ci = keys.index("desiredCurvature")
   curv = [("logged", logged[:, ci])] + [(r.name, np.array([row["desiredCurvature"] for row in r.rows])) for r in runs]
-  lines += ["", f"blinker turns below the lane turn speed: mean desiredCurvature over the first {TURN_COMPARE:.0f}s " +
-            "and peak |desiredCurvature| (1/m); * = during warm-up"]
-  lines.append(f"  {'start':>8} {'dir':<10}{'km/h':>6}" + "".join(f"{name:>26}" for name, _ in curv))
+  lines += ["", f"blinker turns below the lane turn speed: mean desiredCurvature over the first {TURN_COMPARE:.0f}s, " +
+            f"peak |desiredCurvature| (1/m) and seconds to reach half of {runs[0].name}'s peak; * = during warm-up"]
+  lines.append(f"  {'start':>8} {'dir':<10}{'km/h':>6}" + "".join(f"{name:>33}" for name, _ in curv))
   for start, end, direction in turn_events(turns):
     first = (t >= start) & (t < start + TURN_COMPARE)
     whole = (t >= start) & (t <= end)
     kph = speeds[int(np.searchsorted(t, start))] * 3.6
-    cells = "".join(f"{c[first].mean():>+13.4f}{np.abs(c[whole]).max():>13.4f}" for _, c in curv)
+    half = np.abs(curv[1][1][whole]).max() / 2
+    onsets = [onset_time(t, c, start, end, half) for _, c in curv]
+    cells = "".join(f"{c[first].mean():>+13.4f}{np.abs(c[whole]).max():>13.4f}" +
+                    (f"{o - start:>7.1f}" if o is not None else f"{'--':>7}") for (_, c), o in zip(curv, onsets, strict=True))
     mark = "*" if start < t[0] + WARMUP else " "
     lines.append(f"  {start - t0:>7.1f}{mark} {direction:<10}{kph:>6.0f}{cells}")
   return "\n".join(lines)
@@ -305,7 +333,8 @@ def main() -> None:
   parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument("route_dir")
   parser.add_argument("--segments", help="e.g. 2-4; default: all")
-  parser.add_argument("--mode", choices=["logged", "ab"], default="logged")
+  parser.add_argument("--mode", choices=["logged", "ab", "action_t"], default="logged")
+  parser.add_argument("--extras", default="0.3,0.6", help="action_t mode: extra seconds, comma separated")
   parser.add_argument("--models", default=MODELS, help="default: OP_MADS_MODELS")
   args = parser.parse_args()
   if not args.models:
@@ -313,7 +342,7 @@ def main() -> None:
   route = Path(args.route_dir)
   rlogs, _ = route_segments(str(route))
   segments = parse_segments(args.segments, [int(p.parent.name) for p in rlogs])
-  out = replay(route, segments, args.mode, Path(args.models))
+  out = replay(route, segments, args.mode, Path(args.models), parse_extras(args.extras))
   print(report(route_t0(str(route)), *out))
 
 
