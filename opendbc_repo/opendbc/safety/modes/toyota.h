@@ -94,6 +94,30 @@ static bool toyota_get_quality_flag_valid(const CANPacket_t *msg) {
   return valid;
 }
 
+// A PCM cruise rising edge can arrive just before the brake module reports the brake released (RES while braking at
+// low speed). The stale brake then revokes controls right away, and the PCM, engaged but blocked from getting
+// ACC_CONTROL, latches a cruise fault until the next ignition cycle. Re-evaluate such an edge with the first brake
+// message after it: grant controls if that message shows the brake released, otherwise drop the edge. Any later
+// PCM_CRUISE message also drops it, which bounds the wait to one PCM_CRUISE period without a timer.
+static bool toyota_engage_pending = false;
+
+static void toyota_cruise_check(bool cruise_engaged) {
+  bool rising_edge = cruise_engaged && !cruise_engaged_prev;
+  pcm_cruise_check(cruise_engaged);
+  // generic_rx_checks revokes this edge's grant after this message when the brake still reads pressed while moving
+  toyota_engage_pending = rising_edge && brake_pressed && vehicle_moving;
+}
+
+static void toyota_brake_check(bool pressed) {
+  brake_pressed = pressed;
+  if (toyota_engage_pending) {
+    if (!brake_pressed && cruise_engaged_prev) {
+      controls_allowed = true;
+    }
+    toyota_engage_pending = false;
+  }
+}
+
 static void toyota_rx_hook(const CANPacket_t *msg) {
   // get eps motor torque (0.66 factor in dbc)
   if (msg_matches(msg, 0x260U, 0U)) {
@@ -131,25 +155,25 @@ static void toyota_rx_hook(const CANPacket_t *msg) {
   if (toyota_secoc) {
     if (msg_matches(msg, 0x176U, 0U)) {
       bool cruise_engaged = GET_BIT(msg, 5U);  // PCM_CRUISE.CRUISE_ACTIVE
-      pcm_cruise_check(cruise_engaged);
+      toyota_cruise_check(cruise_engaged);
     }
     if (msg_matches(msg, 0x116U, 0U)) {
       gas_pressed = msg->data[1] != 0U;  // GAS_PEDAL.GAS_PEDAL_USER
     }
     if (msg_matches(msg, 0x101U, 0U)) {
-      brake_pressed = GET_BIT(msg, 3U);  // BRAKE_MODULE.BRAKE_PRESSED (toyota_rav4_prime_generated.dbc)
+      toyota_brake_check(GET_BIT(msg, 3U));  // BRAKE_MODULE.BRAKE_PRESSED (toyota_rav4_prime_generated.dbc)
     }
   } else {
     if (msg_matches(msg, 0x1D2U, 0U)) {
       bool cruise_engaged = GET_BIT(msg, 5U);  // PCM_CRUISE.CRUISE_ACTIVE
-      pcm_cruise_check(cruise_engaged);
+      toyota_cruise_check(cruise_engaged);
       gas_pressed = !GET_BIT(msg, 4U);  // PCM_CRUISE.GAS_RELEASED
     }
     if (!toyota_alt_brake && msg_matches(msg, 0x226U, 0U)) {
-      brake_pressed = GET_BIT(msg, 37U);  // BRAKE_MODULE.BRAKE_PRESSED (toyota_nodsu_pt_generated.dbc)
+      toyota_brake_check(GET_BIT(msg, 37U));  // BRAKE_MODULE.BRAKE_PRESSED (toyota_nodsu_pt_generated.dbc)
     }
     if (toyota_alt_brake && msg_matches(msg, 0x224U, 0U)) {
-      brake_pressed = GET_BIT(msg, 5U);  // BRAKE_MODULE.BRAKE_PRESSED (toyota_new_mc_pt_generated.dbc)
+      toyota_brake_check(GET_BIT(msg, 5U));  // BRAKE_MODULE.BRAKE_PRESSED (toyota_new_mc_pt_generated.dbc)
     }
   }
 
@@ -381,6 +405,7 @@ static safety_config toyota_init(uint16_t param) {
   toyota_stock_longitudinal = GET_FLAG(param, TOYOTA_PARAM_STOCK_LONGITUDINAL);
   toyota_lta = GET_FLAG(param, TOYOTA_PARAM_LTA);
   toyota_dbc_eps_torque_factor = param & TOYOTA_EPS_FACTOR;
+  toyota_engage_pending = false;
 
   safety_config ret;
   if (toyota_secoc) {
