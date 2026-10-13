@@ -17,6 +17,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Always offroad (`OffroadMode`) | `system/hardware/hardwared.py`, `selfdrive/ui/lib/always_offroad.py`, mici settings |
 | Low-speed turn desire (`LaneTurnDesire`, default off) | `selfdrive/controls/lib/lane_turn.py`, `desire_helper.py`, `modeld.py` |
 | Low-speed lateral deadband (no wheel turn before a stop) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
+| Toyota resume race fix (RES while braking latched a cruise fault) | safety `opendbc_repo/opendbc/safety/modes/toyota.h`; firmware `panda/board/obj` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
 | Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
 

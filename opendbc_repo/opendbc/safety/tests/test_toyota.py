@@ -140,6 +140,76 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
     self._common_measurement_test(self._speed_msg, 0, 259 / 3.6, 1,
                                   self.safety.get_vehicle_speed_min, self.safety.get_vehicle_speed_max)
 
+  # Route 000000a6: RES while braking at 6 km/h. CRUISE_ACTIVE 0->1 arrived just before BRAKE_PRESSED 1->0, the stale
+  # brake revoked controls, the PCM never got ACC_CONTROL and latched a cruise fault until the next ignition cycle.
+  def _engage_while_braking(self, moving=True):
+    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 1 if moving else 0))
+    self._rx(self._pcm_status_msg(False))
+    self._rx(self._user_brake_msg(1))
+    self._rx(self._pcm_status_msg(True))
+
+  def test_engage_with_brake_release_reported_late(self):
+    self._engage_while_braking()
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._user_brake_msg(0))
+    self.assertTrue(self.safety.get_controls_allowed())
+    # the test PCM_CRUISE message reports gas pressed; with gas released ACC_CONTROL can be sent
+    self._rx(self._user_gas_msg(0))
+    self.assertTrue(self.safety.get_longitudinal_allowed())
+
+  def test_engage_with_brake_held_while_moving_is_not_allowed(self):
+    self._engage_while_braking()
+    self._rx(self._user_brake_msg(1))
+    self.assertFalse(self.safety.get_controls_allowed())
+    # releasing it afterwards needs a new cruise rising edge
+    self._rx(self._user_brake_msg(0))
+    self._rx(self._pcm_status_msg(True))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_next_cruise_message_before_the_brake_message_drops_the_edge(self):
+    self._engage_while_braking()
+    self._rx(self._pcm_status_msg(True))
+    self._rx(self._user_brake_msg(0))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_engage_waits_for_the_next_brake_message_not_a_time(self):
+    # no timer: the next PCM_CRUISE message bounds how late the brake message can be
+    self.safety.set_timer(1000000)
+    self._engage_while_braking()
+    self.safety.set_timer(1000000 + 500000)
+    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 1))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._user_brake_msg(0))
+    self.assertTrue(self.safety.get_controls_allowed())
+
+  def test_only_the_first_brake_message_after_the_edge_counts(self):
+    self._engage_while_braking()
+    self._rx(self._user_brake_msg(1))
+    self._rx(self._user_brake_msg(0))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_cruise_off_before_brake_release_is_not_allowed(self):
+    self._engage_while_braking()
+    self._rx(self._pcm_status_msg(False))
+    self._rx(self._user_brake_msg(0))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_brake_after_engagement_does_not_regrant(self):
+    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 1))
+    self._rx(self._user_brake_msg(0))
+    self._rx(self._pcm_status_msg(False))
+    self._rx(self._pcm_status_msg(True))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self._rx(self._user_brake_msg(1))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self._rx(self._pcm_status_msg(True))
+    self._rx(self._user_brake_msg(0))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_engage_at_standstill_with_brake_held_is_unchanged(self):
+    self._engage_while_braking(moving=False)
+    self.assertTrue(self.safety.get_controls_allowed())
+
 
 class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSafetyTest, common.SteerRequestCutSafetyTest):
 
