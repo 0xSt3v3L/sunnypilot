@@ -138,7 +138,8 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - modeld computes curvature as the model's lateral accel / max(1, v)^2, so near a stop a tiny request becomes a large
   curvature. This model asks for +0.015 to +0.022 m/s^2 (right) while stopping, which turned the wheel 20-45 deg right
   before every stop (sunnypilot's own modeld derives curvature differently and did not). `low_speed_lat.py` drops
-  requests under 0.03 m/s^2 below 3 m/s without a blinker; real low-speed turns ask for 0.15+ m/s^2 and are untouched.
+  requests under 0.03 m/s^2 below 3 m/s, also with a blinker on (with either blinker the stop bias is +0.005 to
+  +0.011 m/s^2 and turned the wheel 22-38 deg right); real low-speed turns ask for 0.15+ m/s^2 and are untouched.
 - Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
   (otherwise every gas press looks like a disengagement).
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the

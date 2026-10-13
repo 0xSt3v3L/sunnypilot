@@ -215,8 +215,7 @@ class Run:
     inputs = inputs | {"desire_pulse": desire_vector(desire),
                        "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32)}
     out = self.model.run(bufs, transforms, inputs)
-    self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego,
-                                                blinker=car_state.leftBlinker or car_state.rightBlinker)
+    self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego)
     msg = messaging.new_message("modelV2")
     fill_model_msg(msg, out, self.prev_action, self.publish_state, logged.frameId, logged.frameIdExtra, logged.frameId,
                    0., logged.timestampEof, 0., True)
