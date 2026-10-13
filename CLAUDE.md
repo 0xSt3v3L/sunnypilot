@@ -16,7 +16,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Onroad debug overlay (ui debug mode) | `selfdrive/ui/lib/debug_info.py`, `selfdrive/ui/mici/onroad/debug_overlay.py` |
 | Always offroad (`OffroadMode`) | `system/hardware/hardwared.py`, `selfdrive/ui/lib/always_offroad.py`, mici settings |
 | Low-speed turn desire (`LaneTurnDesire`, default off) | `selfdrive/controls/lib/lane_turn.py`, `desire_helper.py`, `modeld.py` |
-| Low-speed lateral deadband (no wheel turn before a stop) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
+| Low-speed lateral deadband (no wheel turn before a stop) and swing shaping (7-22 km/h) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
 | Toyota resume race fix (RES while braking latched a cruise fault) | safety `opendbc_repo/opendbc/safety/modes/toyota.h`; firmware `panda/board/obj` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
 | Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
@@ -141,6 +141,10 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   before every stop (sunnypilot's own modeld derives curvature differently and did not). `low_speed_lat.py` drops
   requests under 0.03 m/s^2 below 3 m/s, also with a blinker on (with either blinker the stop bias is +0.005 to
   +0.011 m/s^2 and turned the wheel 22-38 deg right); real low-speed turns ask for 0.15+ m/s^2 and are untouched.
+- The 7-22 km/h left-right wheel swing (~1.3 s period) is in the model's request, not the torque controller: the
+  request (as wheel angle) swings as much as the wheel, the wheel 0.4 s behind, and a closed-loop sim with the real
+  controller is stable with a zero request. Controller changes (lower KP, a D term) only shrink it. `LowSpeedLatShaper`
+  scales the fast part of small requests at 2-6 m/s (steady bends and turns untouched).
 - Process replay defaults `DisengageOnAccelerator` to True; the device has it off, so `mads_replay.py` replays with False
   (otherwise every gas press looks like a disengagement).
 - Commit messages: English, imperative subsystem prefix (`mads:`, `ui:`, `controls:`), ending with the

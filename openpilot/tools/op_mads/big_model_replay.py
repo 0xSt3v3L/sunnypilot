@@ -200,10 +200,13 @@ class Run:
   """One model instance with its own desire state; lane_turn None feeds the logged desire."""
   def __init__(self, name: str, model, lane_turn: bool | None, action_t_extra: float = 0.):
     from openpilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
+    from openpilot.common.realtime import DT_MDL
+    from openpilot.selfdrive.controls.lib.low_speed_lat import LowSpeedLatShaper
     from openpilot.selfdrive.modeld.fill_model_msg import PublishState
     self.name, self.model, self.lane_turn, self.action_t_extra = name, model, lane_turn, action_t_extra
     self.dh, self.relc, self.publish_state = DesireHelper(), RoadEdgeLaneChangeController(), PublishState()
     self.prev_action = log.ModelDataV2.Action()
+    self.lat_shaper = LowSpeedLatShaper(DT_MDL)
     self.rows: list[dict[str, float]] = []
 
   def step(self, md, bufs, transforms, desire, inputs, v_ego, lat_action_t, long_action_t, logged, car_state, lat_active):
@@ -215,7 +218,7 @@ class Run:
     inputs = inputs | {"desire_pulse": desire_vector(desire),
                        "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32)}
     out = self.model.run(bufs, transforms, inputs)
-    self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego)
+    self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego, self.lat_shaper)
     msg = messaging.new_message("modelV2")
     fill_model_msg(msg, out, self.prev_action, self.publish_state, logged.frameId, logged.frameIdExtra, logged.frameId,
                    0., logged.timestampEof, 0., True)

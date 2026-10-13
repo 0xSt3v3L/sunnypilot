@@ -1,7 +1,8 @@
 import os
+import numpy as np
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.selfdrive.controls.lib.low_speed_lat import low_speed_lat_accel, DEADBAND, DEADBAND_RAMP, FULL_SPEED, MAX_SPEED
+from openpilot.selfdrive.controls.lib.low_speed_lat import low_speed_lat_accel, LowSpeedLatShaper, DEADBAND, DEADBAND_RAMP, FULL_SPEED, MAX_SPEED
 
 
 class TestLowSpeedLatAccel(OpenpilotTestCase):
@@ -42,5 +43,42 @@ class TestLowSpeedLatAccel(OpenpilotTestCase):
     # modeld cannot be imported without its model runtime, so check its source
     with open(os.path.join(BASEDIR, "openpilot/selfdrive/modeld/modeld.py")) as f:
       modeld = f.read()
-    assert "low_speed_lat_accel(model_output['action'][0,0], v_ego)" in modeld
+    assert "low_speed_lat_accel(" in modeld
     assert "blinker" not in modeld
+
+
+class TestLowSpeedLatShaper(OpenpilotTestCase):
+  DT = 0.05
+
+  def _run(self, requests, v_ego):
+    shaper = LowSpeedLatShaper(self.DT)
+    return np.array([shaper.update(a, v_ego) for a in requests])
+
+  def test_steady_small_requests_pass(self):
+    # gentle low-speed bends need a steady small request: keep all of it
+    out = self._run(np.full(100, 0.08), 4.0)
+    assert abs(out[-1] - 0.08) < 1e-3
+
+  def test_small_oscillation_is_attenuated(self):
+    # 10-20 km/h swings: the request itself oscillates at about 1.3 s with a few hundredths of a m/s^2
+    t = np.arange(400) * self.DT
+    a = 0.06 * np.sin(2 * np.pi * t / 1.3)
+    out = self._run(a, 4.0)
+    assert np.max(np.abs(out[200:])) < 0.6 * 0.06
+
+  def test_real_turns_are_unchanged(self):
+    a = np.r_[np.zeros(20), np.full(60, 0.3), np.full(60, -0.5)]
+    out = self._run(a, 4.0)
+    assert np.allclose(out[20:], a[20:])
+
+  def test_off_outside_the_speed_range(self):
+    t = np.arange(200) * self.DT
+    a = 0.06 * np.sin(2 * np.pi * t / 1.3)
+    for v in (0.5, 7.0, 15.0):
+      assert np.allclose(self._run(a, v), a)
+
+  def test_modeld_shapes_before_the_deadband(self):
+    with open(os.path.join(BASEDIR, "openpilot/selfdrive/modeld/modeld.py")) as f:
+      modeld = f.read()
+    assert "low_speed_lat_accel(lat_shaper.update(model_output['action'][0,0], v_ego), v_ego)" in modeld
+    assert "lat_shaper = LowSpeedLatShaper(DT_MDL)" in modeld
