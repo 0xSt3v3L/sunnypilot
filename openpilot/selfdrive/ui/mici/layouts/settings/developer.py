@@ -3,6 +3,7 @@ from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigToggle, BigParamControl, BigCircleParamControl, GreyBigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigInputDialog, BigConfirmationCircleButton
+from openpilot.selfdrive.ui.mici.layouts.settings.navigation_page import NavigationPage
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -83,6 +84,13 @@ class DeveloperLayoutMici(NavScroller):
                                         toggle_callback=self._on_alpha_long_enabled,
                                         description="Use alpha openpilot longitudinal control instead of stock ACC. This may disable Automatic Emergency " +
                                                     "Braking (AEB).")
+    self._navigation_toggle = BigParamControl("navigation (alpha)", "NavigationEnabled",
+                                              description="Turn-by-turn navigation with Google routes and comma's navigation driving model, " +
+                                                          "which replaces the stock model from the next drive. Set the destination " +
+                                                          "from the navigation page on the phone.")
+    self._navigation_page_btn = BigButton("navigation page", "show QR code",
+                                          description="Open the destination page on the phone that shares its hotspot.")
+    self._navigation_page_btn.set_click_callback(lambda: gui_app.push_widget(NavigationPage()))
     self._debug_mode_toggle = BigParamControl("ui debug mode", "ShowDebugInfo",
                                               toggle_callback=lambda checked: (gui_app.set_show_touches(checked), gui_app.set_show_fps(checked)),
                                               description="Show touch locations and the UI frame rate.")
@@ -96,6 +104,8 @@ class DeveloperLayoutMici(NavScroller):
       self._lat_maneuver_toggle,
       self._alpha_long_toggle,
       self._debug_mode_toggle,
+      self._navigation_toggle,
+      self._navigation_page_btn,
     ])
 
     # Toggle lists
@@ -107,8 +117,10 @@ class DeveloperLayoutMici(NavScroller):
       ("LateralManeuverMode", self._lat_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("ShowDebugInfo", self._debug_mode_toggle),
+      ("NavigationEnabled", self._navigation_toggle),
     )
-    onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle)
+    # the driving model only changes when modeld starts, so navigation is switched offroad
+    onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle, self._navigation_toggle)
     release_blocked_toggles = (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
     engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
 
