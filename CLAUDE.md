@@ -19,7 +19,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Low-speed lateral deadband (no wheel turn before a stop) and swing shaping (7-22 km/h) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
 | Toyota resume race fix (RES while braking latched a cruise fault) | safety `opendbc_repo/opendbc/safety/modes/toyota.h`; firmware `panda/board/obj` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
-| Navigation with Google routes, offline only (branch `op-nav-google`; navd/mapsd not on the device yet) | `selfdrive/navigation/` (renderer and tracking from comma's nav-model-integration, `google.py`), `modeld.py` nav inputs, `tools/op_mads/nav_model_replay.py` |
+| Navigation with Google routes and comma's nav model (`NavigationEnabled`, default off; branch `op-nav-google` only) | `selfdrive/navigation/` (navd, mapsd, renderer and tracking from comma's nav-model-integration; `google.py`, `navweb.py`), `modeld.py` model switch and nav inputs, mici navigation panel and developer toggle, `tools/op_mads/nav_model_replay.py` |
 | Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
 
 Paths in the table are under `openpilot/` unless they start with `opendbc_repo/` or `panda/`.
@@ -87,6 +87,26 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   top of the public `870a4823` export and checked against logged `modelV2` by replay. The files, METAL builds (about
   30 ms a frame) and how they were made live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README).
   A new big model on the device means rebuilding that ONNX.
+
+## Navigation on the device (branch `op-nav-google`)
+
+- Deploy from the `op-nav-google` worktree with `deploy.py --branch op-nav-google`; the device checks the branch out in
+  the build command, with the branch's own committed binaries. Going back: `deploy.py` from the op-chestnut-mads worktree.
+  The branch adds params and cereal services, so its first deploy rebuilds libparams, cereal, pandad and loggerd.
+- Files the device needs, put by hand (not in git): `/data/navigation/google_maps_api_key` (Routes API and Places API
+  (New) enabled; `chmod 600`) and `/data/navigation/basemap.pmtiles`, a zoom-15 Protomaps extract of Taiwan
+  (`pmtiles extract https://build.protomaps.com/<yyyymmdd>.pmtiles basemap.pmtiles --bbox=119.3,21.8,122.1,25.4
+  --minzoom=15 --maxzoom=15`, about 154 MB; the Mac copy is in `.worktrees/nav-basemap/`). Without the basemap the map
+  input stays black; without the key there is no route or search.
+- `big_driving_nav_tinygrad.pkl` is a git-lfs object (822 MB, on comma's HuggingFace LFS). modeld uses it only when it
+  is more than a pointer on disk, else it keeps the stock model and logs an error; check its size after a deploy.
+- `NavigationEnabled` (developer settings, offroad only) runs navd and mapsd onroad and navweb always, and makes modeld
+  load the nav model at its next start. Off goes back to the stock model on the next drive, no deploy needed.
+- The phone shares its hotspot; the device joins it as Wi-Fi. Developer settings > navigation page shows a QR code of
+  `http://<wlan0 address>:8099/?t=<token>` (token in `/data/navigation/web_token`); the page searches places, takes a
+  Google Maps share link or coordinates, and sets or clears `NavDestination` (cleared at each manager start and offroad
+  transition, so set it after the device is up).
+- navd routes only from a fix of 5 m or better and reroutes after more than 3 s over 25 m off the route.
 
 ## Logs and analysis
 
