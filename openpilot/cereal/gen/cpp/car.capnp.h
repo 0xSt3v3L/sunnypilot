@@ -352,7 +352,7 @@ enum class NetworkLocation_ff99e3682a833c51: uint16_t {
 };
 CAPNP_DECLARE_ENUM(NetworkLocation, ff99e3682a833c51);
 CAPNP_DECLARE_SCHEMA(90f70f9a151b94c1);
-CAPNP_DECLARE_SCHEMA(b160b39b7f412e1a);
+CAPNP_DECLARE_SCHEMA(b31cca3bb740952a);
 
 }  // namespace schemas
 }  // namespace capnp
@@ -922,7 +922,7 @@ struct CarParams::LateralTuning {
   };
 
   struct _capnpPrivate {
-    CAPNP_DECLARE_STRUCT_HEADER(b160b39b7f412e1a, 18, 14)
+    CAPNP_DECLARE_STRUCT_HEADER(b31cca3bb740952a, 18, 14)
     #if !CAPNP_LITE
     static constexpr ::capnp::_::RawBrandedSchema const* brand() { return &schema->defaultBrand; }
     #endif  // !CAPNP_LITE
@@ -3176,21 +3176,17 @@ public:
 
   inline float getMinSteerSpeed() const;
 
-  inline float getMass() const;
-
   inline float getWheelbase() const;
 
   inline float getCenterToFront() const;
 
   inline float getSteerRatio() const;
 
-  inline float getSteerRatioRear() const;
+  inline float getRotationalInertiaPerMass() const;
 
-  inline float getRotationalInertia() const;
+  inline float getTireStiffnessFrontPerMass() const;
 
-  inline float getTireStiffnessFront() const;
-
-  inline float getTireStiffnessRear() const;
+  inline float getTireStiffnessRearPerMass() const;
 
   inline bool hasLongitudinalTuning() const;
   inline  ::cereal::CarParams::LongitudinalPIDTuning::Reader getLongitudinalTuning() const;
@@ -3310,9 +3306,6 @@ public:
   inline float getMinSteerSpeed();
   inline void setMinSteerSpeed(float value);
 
-  inline float getMass();
-  inline void setMass(float value);
-
   inline float getWheelbase();
   inline void setWheelbase(float value);
 
@@ -3322,17 +3315,14 @@ public:
   inline float getSteerRatio();
   inline void setSteerRatio(float value);
 
-  inline float getSteerRatioRear();
-  inline void setSteerRatioRear(float value);
+  inline float getRotationalInertiaPerMass();
+  inline void setRotationalInertiaPerMass(float value);
 
-  inline float getRotationalInertia();
-  inline void setRotationalInertia(float value);
+  inline float getTireStiffnessFrontPerMass();
+  inline void setTireStiffnessFrontPerMass(float value);
 
-  inline float getTireStiffnessFront();
-  inline void setTireStiffnessFront(float value);
-
-  inline float getTireStiffnessRear();
-  inline void setTireStiffnessRear(float value);
+  inline float getTireStiffnessRearPerMass();
+  inline void setTireStiffnessRearPerMass(float value);
 
   inline bool hasLongitudinalTuning();
   inline  ::cereal::CarParams::LongitudinalPIDTuning::Builder getLongitudinalTuning();
@@ -4843,6 +4833,10 @@ public:
   inline bool hasBrakeMaxV() const;
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Reader getBrakeMaxV() const;
 
+  inline float getMass() const;
+
+  inline float getSteerRatioRear() const;
+
   inline bool getSteerLimitAlert() const;
 
   inline float getVEgoStopping() const;
@@ -4977,6 +4971,12 @@ public:
   inline  ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>::Builder initBrakeMaxV(unsigned int size);
   inline void adoptBrakeMaxV(::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>&& value);
   inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> disownBrakeMaxV();
+
+  inline float getMass();
+  inline void setMass(float value);
+
+  inline float getSteerRatioRear();
+  inline void setSteerRatioRear(float value);
 
   inline bool getSteerLimitAlert();
   inline void setSteerLimitAlert(bool value);
@@ -7842,6 +7842,8 @@ inline typename CarParams::Deprecated::Builder CarParams::Builder::initDeprecate
   _builder.setDataField<bool>(::capnp::bounded<15>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint16_t>(::capnp::bounded<1>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint16_t>(::capnp::bounded<6>() * ::capnp::ELEMENTS, 0);
+  _builder.setDataField< ::uint32_t>(::capnp::bounded<4>() * ::capnp::ELEMENTS, 0);
+  _builder.setDataField< ::uint32_t>(::capnp::bounded<8>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint32_t>(::capnp::bounded<12>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint32_t>(::capnp::bounded<13>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint32_t>(::capnp::bounded<14>() * ::capnp::ELEMENTS, 0);
@@ -7905,20 +7907,6 @@ inline void CarParams::Builder::setMinSteerSpeed(float value) {
       ::capnp::bounded<2>() * ::capnp::ELEMENTS, value);
 }
 
-inline float CarParams::Reader::getMass() const {
-  return _reader.getDataField<float>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
-}
-
-inline float CarParams::Builder::getMass() {
-  return _builder.getDataField<float>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
-}
-inline void CarParams::Builder::setMass(float value) {
-  _builder.setDataField<float>(
-      ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
-}
-
 inline float CarParams::Reader::getWheelbase() const {
   return _reader.getDataField<float>(
       ::capnp::bounded<5>() * ::capnp::ELEMENTS);
@@ -7961,58 +7949,44 @@ inline void CarParams::Builder::setSteerRatio(float value) {
       ::capnp::bounded<7>() * ::capnp::ELEMENTS, value);
 }
 
-inline float CarParams::Reader::getSteerRatioRear() const {
-  return _reader.getDataField<float>(
-      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
-}
-
-inline float CarParams::Builder::getSteerRatioRear() {
-  return _builder.getDataField<float>(
-      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
-}
-inline void CarParams::Builder::setSteerRatioRear(float value) {
-  _builder.setDataField<float>(
-      ::capnp::bounded<8>() * ::capnp::ELEMENTS, value);
-}
-
-inline float CarParams::Reader::getRotationalInertia() const {
+inline float CarParams::Reader::getRotationalInertiaPerMass() const {
   return _reader.getDataField<float>(
       ::capnp::bounded<9>() * ::capnp::ELEMENTS);
 }
 
-inline float CarParams::Builder::getRotationalInertia() {
+inline float CarParams::Builder::getRotationalInertiaPerMass() {
   return _builder.getDataField<float>(
       ::capnp::bounded<9>() * ::capnp::ELEMENTS);
 }
-inline void CarParams::Builder::setRotationalInertia(float value) {
+inline void CarParams::Builder::setRotationalInertiaPerMass(float value) {
   _builder.setDataField<float>(
       ::capnp::bounded<9>() * ::capnp::ELEMENTS, value);
 }
 
-inline float CarParams::Reader::getTireStiffnessFront() const {
+inline float CarParams::Reader::getTireStiffnessFrontPerMass() const {
   return _reader.getDataField<float>(
       ::capnp::bounded<10>() * ::capnp::ELEMENTS);
 }
 
-inline float CarParams::Builder::getTireStiffnessFront() {
+inline float CarParams::Builder::getTireStiffnessFrontPerMass() {
   return _builder.getDataField<float>(
       ::capnp::bounded<10>() * ::capnp::ELEMENTS);
 }
-inline void CarParams::Builder::setTireStiffnessFront(float value) {
+inline void CarParams::Builder::setTireStiffnessFrontPerMass(float value) {
   _builder.setDataField<float>(
       ::capnp::bounded<10>() * ::capnp::ELEMENTS, value);
 }
 
-inline float CarParams::Reader::getTireStiffnessRear() const {
+inline float CarParams::Reader::getTireStiffnessRearPerMass() const {
   return _reader.getDataField<float>(
       ::capnp::bounded<11>() * ::capnp::ELEMENTS);
 }
 
-inline float CarParams::Builder::getTireStiffnessRear() {
+inline float CarParams::Builder::getTireStiffnessRearPerMass() {
   return _builder.getDataField<float>(
       ::capnp::bounded<11>() * ::capnp::ELEMENTS);
 }
-inline void CarParams::Builder::setTireStiffnessRear(float value) {
+inline void CarParams::Builder::setTireStiffnessRearPerMass(float value) {
   _builder.setDataField<float>(
       ::capnp::bounded<11>() * ::capnp::ELEMENTS, value);
 }
@@ -10368,6 +10342,34 @@ inline void CarParams::Deprecated::Builder::adoptBrakeMaxV(
 inline ::capnp::Orphan< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>> CarParams::Deprecated::Builder::disownBrakeMaxV() {
   return ::capnp::_::PointerHelpers< ::capnp::List<float,  ::capnp::Kind::PRIMITIVE>>::disown(_builder.getPointerField(
       ::capnp::bounded<7>() * ::capnp::POINTERS));
+}
+
+inline float CarParams::Deprecated::Reader::getMass() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+
+inline float CarParams::Deprecated::Builder::getMass() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS);
+}
+inline void CarParams::Deprecated::Builder::setMass(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
+}
+
+inline float CarParams::Deprecated::Reader::getSteerRatioRear() const {
+  return _reader.getDataField<float>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+
+inline float CarParams::Deprecated::Builder::getSteerRatioRear() {
+  return _builder.getDataField<float>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS);
+}
+inline void CarParams::Deprecated::Builder::setSteerRatioRear(float value) {
+  _builder.setDataField<float>(
+      ::capnp::bounded<8>() * ::capnp::ELEMENTS, value);
 }
 
 inline bool CarParams::Deprecated::Reader::getSteerLimitAlert() const {
