@@ -8,9 +8,20 @@ from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
 
 
-def modeld_pkl_path(chestnut: bool):
+NAV_MODEL_MIN_SIZE = 1 << 20  # bytes; a git-lfs pointer is about 130
+
+
+def modeld_pkl_path(chestnut: bool, nav: bool = False):
+  """The driving model; with nav, the big navigation model (comma's nav-model-integration n16), which only chestnut runs."""
+  if chestnut and nav:
+    return MODELS_DIR / 'big_driving_nav_tinygrad.pkl'
   prefix = 'big_' if chestnut else ''
   return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
+
+
+def nav_model_ready(path: Path) -> bool:
+  """Whether the nav model is on disk, not just its git-lfs pointer."""
+  return path.is_file() and path.stat().st_size >= NAV_MODEL_MIN_SIZE
 
 def load_oob(path, chestnut=False):
   from tinygrad import Context

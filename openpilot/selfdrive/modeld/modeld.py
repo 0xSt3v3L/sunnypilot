@@ -41,7 +41,9 @@ from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, 
 from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob, wait_for_chestnut, \
+  nav_model_ready
+from openpilot.selfdrive.navigation.helpers import navigation_input
 
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
 
@@ -49,6 +51,7 @@ LAT_SMOOTH_SECONDS = 0.0
 LONG_SMOOTH_SECONDS = 0.3
 MIN_LAT_CONTROL_SPEED = 0.3
 BIG_MODEL_TIMEOUT = 60
+NAV_MAP_TIMEOUT = 0.5  # s; an older map frame is not fed to the nav model
 
 
 def get_action_from_model(model_output: dict[str, np.ndarray], prev_action: log.ModelDataV2.Action,
@@ -144,8 +147,8 @@ def input_view(buffer: Buffer, shape: tuple[int, ...], dtype: DType, offset: int
 class ModelState:
   prev_desire: np.ndarray  # for tracking the rising edge of the pulse
 
-  def __init__(self, cam_w: int, cam_h: int, chestnut: bool):
-    jits = load_oob(modeld_pkl_path(chestnut), chestnut)
+  def __init__(self, cam_w: int, cam_h: int, chestnut: bool, nav: bool = False):
+    jits = load_oob(modeld_pkl_path(chestnut, nav=nav), chestnut)
     self.model_device = jits['input_specs']['new_img'][2]
     self.input_shapes = {name: (shape, np.dtype(dtype)) for name, (shape, dtype, _) in jits['input_specs'].items()}
     self.state_pairs = {name: f'next_{name}' for name in self.input_shapes if f'next_{name}' in jits['metadata']['output_shapes']}
@@ -257,6 +260,7 @@ def main(demo=False):
   vipc_client_main_stream = VisionStreamType.VISION_STREAM_WIDE_ROAD if main_wide_camera else VisionStreamType.VISION_STREAM_NARROW_ROAD
   vipc_client_main = VisionIpcClient("camerad", vipc_client_main_stream, True)
   vipc_client_extra = VisionIpcClient("camerad", VisionStreamType.VISION_STREAM_WIDE_ROAD, False)
+  vipc_client_map = VisionIpcClient("mapsd", VisionStreamType.VISION_STREAM_MAP, True)
   cloudlog.warning(f"vision stream set up, main_wide_camera: {main_wide_camera}, use_extra_client: {use_extra_client}")
 
   while not vipc_client_main.connect(False):
@@ -269,7 +273,11 @@ def main(demo=False):
     cloudlog.warning(f"connected extra cam with buffer size: {vipc_client_extra.buffer_len} ({vipc_client_extra.width} x {vipc_client_extra.height})")
 
   st = time.monotonic()
-  cloudlog.warning("loading model")
+  # NavigationEnabled swaps in the nav model (on chestnut); turning it off goes back to the stock model on the next drive
+  nav = params.get_bool("NavigationEnabled") and nav_model_ready(modeld_pkl_path(True, nav=True))
+  if params.get_bool("NavigationEnabled") and not nav:
+    cloudlog.error("navigation enabled but the nav model is not on disk, using the stock model")
+  cloudlog.warning(f"loading model, nav: {nav}")
   model = None
   if CHESTNUT:
     big_model = None
@@ -277,7 +285,7 @@ def main(demo=False):
       nonlocal big_model
       try:
         wait_for_chestnut()
-        m = ModelState(vipc_client_main.width, vipc_client_main.height, True)
+        m = ModelState(vipc_client_main.width, vipc_client_main.height, True, nav=nav)
         m.warmup()
         big_model = m
       except Exception:
@@ -299,7 +307,8 @@ def main(demo=False):
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataSP"] + (["chestnutGpuState"] if CHESTNUT else [])
   pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState", "carControl", "lateralDelay",
+                  "navInstruction"])
 
   publish_state = PublishState()
   params = Params()
@@ -333,6 +342,7 @@ def main(demo=False):
   DH = DesireHelper()
   RELC = RoadEdgeLaneChangeController()
   lane_turn_enabled = params.get_bool("LaneTurnDesire")
+  nav_map, nav_map_time = None, 0.
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -411,6 +421,18 @@ def main(demo=False):
       'traffic_convention': traffic_convention,
       'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
+
+    # Map and navigation inputs, as on nav-model-integration; without them the nav model gets zeros
+    if nav and model.chestnut:
+      now = time.monotonic()
+      if vipc_client_map.is_connected() or vipc_client_map.connect(False):
+        if (buf_map := vipc_client_map.recv(0)) is not None:
+          nav_map = np.frombuffer(buf_map.data, dtype=np.uint8, count=buf_map.width * buf_map.height).reshape(buf_map.height, buf_map.width).copy()
+          nav_map_time = now
+      if nav_map is not None and now - nav_map_time < NAV_MAP_TIMEOUT:
+        inputs['nav_map'] = nav_map
+      if sm.valid['navInstruction'] and now - sm.recv_time['navInstruction'] < 2:
+        inputs['navigation'] = navigation_input(sm['navInstruction'].allManeuvers, v_ego * (now - sm.recv_time['navInstruction']))
 
     mt1 = time.perf_counter()
     try:
