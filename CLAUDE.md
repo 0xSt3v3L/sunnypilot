@@ -133,6 +133,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
     `navigation` (1, 47) = Valhalla command one-hot + distance / 100. openpilot's LFS objects live on
     `huggingface.co/commaai/openpilot-lfs` (see `.lfsconfig`): fetch one through its LFS batch API by oid and size.
   - comma's nav endpoints (`v1/<dongle>/nav/tiles`, `v1/nav/directions`) answer 403 to this device's valid JWT.
+  - Ablation over 12 real turns (a2 5-7, a3 18-21, a4 14-16, a5 5-9; rl nav 80eedcdd): both inputs move the mean
+    curvature toward the turn in 11/12, median +15% (+0.005 1/m); the map alone +12%, the instruction alone +6%; the
+    mirrored instruction gives less than the right one in 12/12 but never turns the other way. The replay is open loop:
+    the video already shows the driver's turn, so it cannot show whether the model would start a turn on its own; a
+    wrong left at a5 316 s (the driver went straight) moved nothing. Only a closed-loop drive can answer that.
 
 ## Conventions and invariants
 
