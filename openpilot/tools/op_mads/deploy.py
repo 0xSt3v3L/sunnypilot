@@ -65,6 +65,12 @@ def update_command(branch: str, device_branch: str, commits: int) -> str:
   return fetch + f"git checkout -q -B {branch} FETCH_HEAD; "
 
 
+def ancestry_required(branch: str, device_branch: str) -> bool:
+  """The device HEAD must be an ancestor on the same branch. A switch checks the other branch out, and the device's
+  own commits (the build outputs) are already pushed to the fork."""
+  return branch == device_branch
+
+
 def parse_device_state(out: str) -> tuple[bool, str, str, list[tuple[str, str]]]:
   """(onroad, branch, HEAD, status) from device_state's ssh output."""
   head_part, status = out.split("---\n", 1)
@@ -113,12 +119,14 @@ def main(argv=None) -> int:
     return fail("device is onroad")
   if dirty := unexpected_dirty(device_status):
     return fail(f"device has unexpected changes: {dirty}")
-  if subprocess.run(["git", "merge-base", "--is-ancestor", device_head, head], cwd=ROOT).returncode != 0:
+  if ancestry_required(branch, device_branch) and \
+     subprocess.run(["git", "merge-base", "--is-ancestor", device_head, head], cwd=ROOT).returncode != 0:
     return fail(f"device HEAD {device_head[:10]} is not an ancestor of local HEAD")
   if device_head == head and device_branch == branch:
     print("device is up to date")
     return 0
-  commits = int(run(["git", "rev-list", "--count", f"{device_head}..{head}"]).strip())
+  # a switch checks the branch head out, so a shallow fetch of any depth does
+  commits = int(run(["git", "rev-list", "--count", f"{device_head}..{head}"]).strip()) if device_branch == branch else 0
   print(f"deploy {commits} commits: {device_branch} {device_head[:10]} -> {branch} {head[:10]}")
   if args.dry_run:
     print("dry run: preflight passed")
