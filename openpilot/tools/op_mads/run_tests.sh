@@ -6,7 +6,7 @@ set -euo pipefail
 WT=$(cd "$(dirname "$0")/../../.." && pwd)
 TEST=${OP_MADS_TEST:-$WT/../op-mads-test}
 SYNC=${OP_MADS_SYNC:-$WT/../op-mads-sync.sh}
-BASE=4800490a7  # openpilot v0.11.2, the fork base
+BASE=a6f7f353b3  # openpilot v0.11.3 nightly-chestnut build of 75b2ccca60, the upstream the fork last merged
 CORE=(
   openpilot.selfdrive.selfdrived.tests.test_state_machine
   openpilot.selfdrive.selfdrived.tests.test_alerts
