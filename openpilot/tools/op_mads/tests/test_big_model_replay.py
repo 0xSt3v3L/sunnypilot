@@ -6,9 +6,10 @@ from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper
 from openpilot.selfdrive.controls.lib.lane_turn import TurnDirection
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
-from openpilot.tools.op_mads.big_model_replay import (FrameSource, compare_rows, desire_from_state, desire_vector,
-                                                      extra_lat_action_t, nv12_buffer, onset_time, parse_extras,
-                                                      parse_segments, turn_events)
+from openpilot.tools.op_mads.big_model_replay import (MODEL_PKL, FrameSource, compare_rows, desire_from_state,
+                                                      desire_vector, dump, extra_lat_action_t, frame_context,
+                                                      nv12_buffer, onset_time, parse_extras, parse_segments,
+                                                      raw_lat_request, runs_for, turn_events)
 
 
 def car_state(v=10., left=False, right=False, pressed=False, torque=0., left_bsm=False):
@@ -119,3 +120,53 @@ class TestBigModelReplay(OpenpilotTestCase):
     rows = compare_rows(["x"], t, logged, logged + 0.1, skip=2.)
     (name, corr, rmse, std), = rows
     assert name == "x" and abs(corr - 1.) < 1e-9 and abs(rmse - 0.1) < 1e-9 and abs(std - 0.5) < 1e-9
+
+  def test_runs_for_compares_models_with_the_logged_desire(self):
+    loaded = []
+    def load(pkl):
+      loaded.append(pkl)
+      return pkl
+    runs = runs_for("logged", load, MODEL_PKL, None, [])
+    assert [(r.name, r.model, r.lane_turn) for r in runs] == [("replay", MODEL_PKL, None)]
+    loaded.clear()
+    runs = runs_for("logged", load, "a.pkl", "b.pkl", [])
+    assert [(r.name, r.model, r.lane_turn) for r in runs] == [("a.pkl", "a.pkl", None), ("b.pkl", "b.pkl", None)]
+    assert loaded == ["a.pkl", "b.pkl"]
+    with self.assertRaises(SystemExit):
+      runs_for("ab", load, "a.pkl", "b.pkl", [])
+
+  def test_runs_for_other_modes_use_the_chosen_model(self):
+    runs = runs_for("ab", lambda pkl: pkl, "a.pkl", None, [])
+    assert [(r.name, r.model, r.lane_turn) for r in runs] == [("lane turn off", "a.pkl", False), ("lane turn on", "a.pkl", True)]
+    runs = runs_for("action_t", lambda pkl: pkl, "a.pkl", None, [.3])
+    assert [(r.name, r.action_t_extra) for r in runs] == [("baseline", 0.), ("action_t +0.3s", .3)]
+
+  def test_raw_lat_request(self):
+    assert raw_lat_request({"action": np.array([[0.02, -1.5]], dtype=np.float32)}) == np.float32(0.02)
+    assert np.isnan(raw_lat_request({"plan": np.zeros((1, 33, 15))}))
+
+  def test_frame_context(self):
+    cs = car.CarState.new_message(vEgo=3., aEgo=-1., steeringAngleDeg=12., leftBlinker=True)
+    cc = car.CarControl.new_message(latActive=True, longActive=False)
+    rs = log.RadarState.new_message(leadOne={"present": True, "dRel": 20., "vLead": 4.}).as_reader()
+    ctx = frame_context(cs, cc, rs)
+    assert ctx == {"v_ego": 3., "a_ego": -1., "steering_angle": 12., "left_blinker": 1., "right_blinker": 0.,
+                   "lat_active": 1., "long_active": 0., "lead_present": 1., "lead_d": 20., "lead_v": 4.}
+    ctx = frame_context(cs, None, None)
+    assert ctx["lat_active"] == 0. and ctx["lead_present"] == 0. and np.isnan(ctx["lead_d"])
+
+  def test_dump_round_trip(self):
+    import tempfile
+    from pathlib import Path
+    from types import SimpleNamespace
+    runs = [SimpleNamespace(name="a.pkl", rows=[{"x": 1., "lat_accel_request": .1}, {"x": 2., "lat_accel_request": .2}])]
+    with tempfile.TemporaryDirectory() as d:
+      path = Path(d) / "out.npz"
+      dump(path, 100., [100.5, 101.], [{"x": 1.5}, {"x": 2.5}], runs, [{"v_ego": 1.}, {"v_ego": 2.}])
+      z = np.load(path)
+      np.testing.assert_allclose(z["t"], [.5, 1.])
+      np.testing.assert_allclose(z["logged/x"], [1.5, 2.5])
+      np.testing.assert_allclose(z["run0/x"], [1., 2.])
+      np.testing.assert_allclose(z["run0/lat_accel_request"], [.1, .2])
+      np.testing.assert_allclose(z["ctx/v_ego"], [1., 2.])
+      assert list(z["run_names"]) == ["a.pkl"]

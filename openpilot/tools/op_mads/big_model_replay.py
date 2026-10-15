@@ -2,9 +2,11 @@
 """Replay the device's big driving model on the Mac from a route's full-resolution video.
 
 usage: big_model_replay.py <route dir> [--segments 2-4] [--mode logged|ab|action_t] [--extras 0.3,0.6]
+                           [--model PKL] [--compare PKL] [--warmup S] [--dump out.npz]
 
 logged: the desire the device fed the model, rebuilt from the log, so the output can be checked against the logged
-        modelV2 (the replay runs on the encoded video, so it is not exact).
+        modelV2 (the replay runs on the encoded video, so it is not exact). --compare runs a second model on the
+        same frames and desire (model A/B).
 ab:     two runs over the same frames, LaneTurnDesire off and on; each recomputes its desire with DesireHelper and RELC
         from its own outputs, as modeld does.
 action_t: the logged desire, plus runs that ask the model for its lateral action that many seconds later (--extras)
@@ -12,10 +14,12 @@ action_t: the logged desire, plus runs that ask the model for its lateral action
 All print a modelV2 comparison and, for every low-speed blinker turn, the model curvature after the turn starts and
 how long it takes to reach half the first run's peak.
 
-Model files come from OP_MADS_MODELS (see its README). Missing fcamera.hevc / ecamera.hevc segments are copied from
+Model files come from OP_MADS_MODELS (see its README); --model picks the pkl there. Missing fcamera.hevc / ecamera.hevc segments are copied from
 the device (OP_MADS_DEVICE). Run from the test copy with
-`DEV=METAL PYTHONPATH=<worktree>/opendbc_repo:$PWD:$PWD/tinygrad_repo .venv/bin/python <this script> ...`.
-Times are seconds from the route start, as in drive_report.py.
+`DEV=METAL HCQ_RUNTIME_DEV=CPU:CLANG PYTHONPATH=<worktree>/opendbc_repo:$PWD:$PWD/tinygrad_repo .venv/bin/python <this script> ...`
+(the Mac has no libLLVM for tinygrad's default host runtime).
+Times are seconds from the route start, as in drive_report.py. --dump writes every compared value, each run's raw
+lateral accel request (before the low-speed shaping) and the car's state per frame to an .npz for further analysis.
 """
 import argparse
 import os
@@ -36,7 +40,7 @@ MODELS = os.environ.get("OP_MADS_MODELS")
 MODEL_PKL = "big_8d736683_metal.pkl"  # the device's big model, rebuilt; the warp pkls sit next to it
 VIDEOS = {"narrowRoadEncodeIdx": "fcamera.hevc", "wideRoadEncodeIdx": "ecamera.hevc"}
 SERVICES = {"carParams", "carState", "carControl", "deviceState", "narrowRoadCameraState", "extrinsicsCalibration",
-            "driverMonitoringState", "lateralDelay", "modelV2", "modelDataSP", *VIDEOS}
+            "driverMonitoringState", "lateralDelay", "modelV2", "modelDataSP", "radarState", *VIDEOS}
 WARMUP = 10.  # s after the replay starts while the model's history fills; not compared
 TURN_COMPARE = 2.  # s of model curvature averaged after a lane turn starts
 TURN_GAP = 1.5  # s without the blinker that still belongs to the same turn
@@ -150,6 +154,24 @@ def compare_rows(keys, t, logged, replayed, skip: float) -> list[tuple[str, floa
   return rows
 
 
+def raw_lat_request(out: dict[str, np.ndarray]) -> float:
+  """The model's lateral accel request before modeld's low-speed shaping, or nan for a plan-only model."""
+  return float(out["action"][0, 0]) if "action" in out else float("nan")
+
+
+def frame_context(cs, cc, rs) -> dict[str, float]:
+  """The car's state at a frame, for the --dump analysis."""
+  lead = rs.leadOne if rs is not None else None
+  has_lead = lead is not None and lead.present
+  return {
+    "v_ego": float(cs.vEgo), "a_ego": float(cs.aEgo), "steering_angle": float(cs.steeringAngleDeg),
+    "left_blinker": float(cs.leftBlinker), "right_blinker": float(cs.rightBlinker),
+    "lat_active": float(cc is not None and cc.latActive), "long_active": float(cc is not None and cc.longActive),
+    "lead_present": float(has_lead),
+    "lead_d": float(lead.dRel) if has_lead else float("nan"), "lead_v": float(lead.vLead) if has_lead else float("nan"),
+  }
+
+
 def features(mv2) -> dict[str, float]:
   """The modelV2 values compared, one float each (T_IDXS[14] ~ 1.9 s, T_IDXS[20] ~ 3.9 s, X_IDXS[14] ~ 37 m)."""
   out = {
@@ -223,28 +245,44 @@ class Run:
     fill_model_msg(msg, out, self.prev_action, self.publish_state, logged.frameId, logged.frameIdExtra, logged.frameId,
                    0., logged.timestampEof, 0., True)
     mv2 = msg.modelV2
+    row = features(mv2) | {"lat_accel_request": raw_lat_request(out)}
     if self.lane_turn is not None:
       prob = mv2.meta.desireState[log.Desire.laneChangeLeft] + mv2.meta.desireState[log.Desire.laneChangeRight]
       left_edge, right_edge = self.relc.update(mv2.roadEdgeStds, mv2.laneLineProbs, v_ego, mv2.roadEdges)
       self.dh.update(car_state, lat_active, prob, left_edge, right_edge, lane_turn_enabled=self.lane_turn)
-    self.rows.append(features(mv2))
+    self.rows.append(row)
 
 
-def load_model(md, models: Path, w: int, h: int):
+def load_model(md, models: Path, w: int, h: int, pkl: str = MODEL_PKL):
   from tinygrad import Context
   from tinygrad_repo.examples.openpilot.helpers import load_pickle
 
   def load_metal(path, chestnut=False):
     with Context(DEV="METAL"):
-      return load_pickle(models / MODEL_PKL, out_of_band=True)
+      return load_pickle(models / pkl, out_of_band=True)
 
   md.load_oob, md.MODELS_DIR = load_metal, models
   model = md.ModelState(w, h, True)
+  model.chestnut = False  # the chestnut checks in run() read AMD device state; the paths above are set already
   model.warmup()
   return model
 
 
-def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.3, 0.6)):
+def runs_for(mode: str, load, model_pkl: str, compare: str | None, extras) -> list[Run]:
+  """The runs of a replay; load(pkl) gives a fresh model instance."""
+  if compare is not None and mode != "logged":
+    raise SystemExit("--compare works with --mode logged")
+  if mode == "logged":
+    if compare is None:
+      return [Run("replay", load(model_pkl), None)]
+    return [Run(model_pkl, load(model_pkl), None), Run(compare, load(compare), None)]
+  if mode == "ab":
+    return [Run("lane turn off", load(model_pkl), False), Run("lane turn on", load(model_pkl), True)]
+  return [Run("baseline", load(model_pkl), None)] + [Run(f"action_t +{e:g}s", load(model_pkl), None, e) for e in extras]
+
+
+def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.3, 0.6), model_pkl: str = MODEL_PKL,
+           compare: str | None = None):
   from openpilot.common.realtime import DT_MDL
   from openpilot.common.transformations.camera import DEVICE_CAMERAS
   from openpilot.common.transformations.model import get_warp_matrix
@@ -260,15 +298,9 @@ def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.
   w, h = dc.narrow_road.width, dc.narrow_road.height
   main, extra = (Camera(route, (k, of[k]), w, h) for k in VIDEOS)
 
-  model = load_model(md, models, w, h)
-  if mode == "logged":
-    runs = [Run("replay", model, None)]
-  elif mode == "ab":
-    runs = [Run("lane turn off", model, False), Run("lane turn on", load_model(md, models, w, h), True)]
-  else:
-    runs = [Run("baseline", model, None)] + [Run(f"action_t +{e:g}s", load_model(md, models, w, h), None, e) for e in extras]
+  runs = runs_for(mode, lambda pkl: load_model(md, models, w, h, pkl), model_pkl, compare, extras)
   long_action_t = CP.longitudinalActuatorDelay + md.LONG_SMOOTH_SECONDS + DT_MDL + DT_MDL / 2
-  times, speeds, logged_rows, turns, run_ms = [], [], [], [], []
+  times, speeds, logged_rows, turns, run_ms, contexts = [], [], [], [], [], []
   prev_mv = None
 
   for t, mv in of["modelV2"]:
@@ -298,19 +330,30 @@ def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.
     speeds.append(v_ego)
     logged_rows.append(features(mv))
     turns.append((t, lane_turn_direction(cs, True)))
-  return times, speeds, logged_rows, runs, turns, run_ms
+    contexts.append(frame_context(cs, cc, _at(of["radarState"], t)))
+  return times, speeds, logged_rows, runs, turns, run_ms, contexts
 
 
-def report(t0: float, times, speeds, logged_rows, runs, turns, run_ms) -> str:
+def dump(path: Path, t0: float, times, logged_rows, runs, contexts) -> None:
+  """Per-frame arrays: t (s from the route start), logged/<feature>, run<i>/<feature>, ctx/<state>, run_names."""
+  arrays = {"t": np.array(times) - t0, "run_names": np.array([r.name for r in runs])}
+  arrays |= {f"logged/{k}": np.array([row[k] for row in logged_rows]) for k in logged_rows[0]}
+  for i, r in enumerate(runs):
+    arrays |= {f"run{i}/{k}": np.array([row[k] for row in r.rows]) for k in r.rows[0]}
+  arrays |= {f"ctx/{k}": np.array([c[k] for c in contexts]) for k in contexts[0]}
+  np.savez_compressed(path, **arrays)
+
+
+def report(t0: float, times, speeds, logged_rows, runs, turns, run_ms, warmup: float = WARMUP) -> str:
   keys = list(logged_rows[0])
   t = np.array(times)
   logged = np.array([[r[k] for k in keys] for r in logged_rows])
-  lines = [f"{len(t)} frames, {t[0] - t0:.1f}-{t[-1] - t0:.1f}s, compared after {WARMUP:.0f}s; " +
+  lines = [f"{len(t)} frames, {t[0] - t0:.1f}-{t[-1] - t0:.1f}s, compared after {warmup:g}s; " +
            f"model run median {np.median(run_ms):.1f} ms"]
   for r in runs:
     rep = np.array([[row[k] for k in keys] for row in r.rows])
     lines += ["", f"{r.name} vs logged", f"  {'feature':<22}{'corr':>8}{'rmse':>10}{'log std':>10}{'rmse/std':>10}"]
-    for k, corr, rmse, sd in compare_rows(keys, t, logged, rep, WARMUP):
+    for k, corr, rmse, sd in compare_rows(keys, t, logged, rep, warmup):
       lines.append(f"  {k:<22}{corr:>8.4f}{rmse:>10.4f}{sd:>10.4f}{(rmse / sd if sd > 0 else float('nan')):>10.3f}")
 
   ci = keys.index("desiredCurvature")
@@ -326,7 +369,7 @@ def report(t0: float, times, speeds, logged_rows, runs, turns, run_ms) -> str:
     onsets = [onset_time(t, c, start, end, half) for _, c in curv]
     cells = "".join(f"{c[first].mean():>+13.4f}{np.abs(c[whole]).max():>13.4f}" +
                     (f"{o - start:>7.1f}" if o is not None else f"{'--':>7}") for (_, c), o in zip(curv, onsets, strict=True))
-    mark = "*" if start < t[0] + WARMUP else " "
+    mark = "*" if start < t[0] + warmup else " "
     lines.append(f"  {start - t0:>7.1f}{mark} {direction:<10}{kph:>6.0f}{cells}")
   return "\n".join(lines)
 
@@ -338,14 +381,22 @@ def main() -> None:
   parser.add_argument("--mode", choices=["logged", "ab", "action_t"], default="logged")
   parser.add_argument("--extras", default="0.3,0.6", help="action_t mode: extra seconds, comma separated")
   parser.add_argument("--models", default=MODELS, help="default: OP_MADS_MODELS")
+  parser.add_argument("--model", default=MODEL_PKL, help=f"model pkl in the models dir (default {MODEL_PKL})")
+  parser.add_argument("--compare", help="logged mode: a second model pkl run on the same frames and desire")
+  parser.add_argument("--warmup", type=float, default=WARMUP, help="seconds not compared while the history fills")
+  parser.add_argument("--dump", help="write per-frame values to this .npz")
   args = parser.parse_args()
   if not args.models:
     raise SystemExit("set OP_MADS_MODELS or pass --models")
   route = Path(args.route_dir)
   rlogs, _ = route_segments(str(route))
   segments = parse_segments(args.segments, [int(p.parent.name) for p in rlogs])
-  out = replay(route, segments, args.mode, Path(args.models), parse_extras(args.extras))
-  print(report(route_t0(str(route)), *out))
+  times, speeds, logged_rows, runs, turns, run_ms, contexts = replay(route, segments, args.mode, Path(args.models),
+                                                                     parse_extras(args.extras), args.model, args.compare)
+  t0 = route_t0(str(route))
+  print(report(t0, times, speeds, logged_rows, runs, turns, run_ms, args.warmup))
+  if args.dump:
+    dump(Path(args.dump), t0, times, logged_rows, runs, contexts)
 
 
 if __name__ == "__main__":
