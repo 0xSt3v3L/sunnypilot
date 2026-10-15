@@ -116,7 +116,7 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   Encoded video makes the replay inexact: rmse/std about 0.03-0.2 against the log is the floor.
   The low-speed lateral shaping postdates routes up to 000000a5, so their logged desiredCurvature no longer matches a
   replay (rmse/std about 1.1 on a5/2); the model outputs themselves still do.
-- `nav_model_replay.py <route dir> --segments 5-9 --model big_nav_afbf2e5_metal.pkl --tiles <PMTiles URL> [--maps out.png]`:
+- `nav_model_replay.py <route dir> --segments 5-9 --model big_nav_afbf2e5_metal.pkl --tiles <PMTiles URL> [--maps out.png] [--ablation]`:
   runs comma's nav model twice over the same frames, without and with the map and navigation inputs, from a Google route
   along the driven GPS track, and prints the curvature (+ = right) around each turn maneuver. Google key from
   `GOOGLE_MAPS_API_KEY` or `~/.config/op-mads/google_maps_api_key`; `--tiles` is a public Protomaps build

@@ -2,13 +2,15 @@
 """Replay comma's navigation driving model on the Mac with a Google route along the driven path.
 
 usage: nav_model_replay.py <route dir> --segments 2-4 --model <nav model pkl> --tiles <PMTiles URL> [--maps out.png]
+       [--ablation]
 
 Google routes from the first to the last GPS fix of the segments, through up to 25 via points spread along the driven
 path, so the route follows the drive. Two runs of the nav model share the logged desire: "nav off" with zero map and
 navigation inputs, "nav on" with the inputs mapsd and navd would give it (the map rendered from the PMTiles basemap,
 centered on the route ahead of the last fix; the next maneuver as a Valhalla command and its distance). For each turn
 maneuver of the route it prints the curvature (positive to the right) of the logged device model and of both runs.
---maps saves the map input at each maneuver.
+--maps saves the map input at each maneuver. --ablation adds runs with the map alone, the instruction alone, and both
+with the instruction mirrored left/right, to see which input the model follows.
 
 The Google API key comes from GOOGLE_MAPS_API_KEY or ~/.config/op-mads/google_maps_api_key. --tiles is a PMTiles v3
 Protomaps basemap (for example a build from build.protomaps.com); tiles along the route are cached under
@@ -42,6 +44,9 @@ FIX_TIMEOUT = 2.  # s; navd and mapsd drop a fix this old
 REROUTE_DISTANCE = 25.  # m off the route, as navd
 REROUTE_COUNT = 3  # navd reroutes after more than this many 1 Hz updates off the route
 VIA_LOOKAHEAD = 30.  # m; a reroute keeps the vias at least this far ahead along the track
+# Valhalla commands and their mirror images: slight, plain and sharp turns, on ramps, exits and forks
+FLIPPED = {9: 16, 10: 15, 11: 14, 18: 19, 20: 21, 23: 24}
+FLIPPED |= {v: k for k, v in FLIPPED.items()}
 EVENT_WINDOW = (-3., 2.)  # s around passing a maneuver over which curvature is averaged
 
 
@@ -119,6 +124,7 @@ class NavInputs:
     self.maps: list[np.ndarray] = []  # the map input at each maneuver passed
     self.reroutes, self.offroute, self.checked = 0, 0, -np.inf
     self.progress = -np.inf
+    self.last: tuple[float, dict] | None = None  # (t, inputs): runs over the same frame share one update
     self.set_route(router(0))
 
   def set_route(self, steps: list[dict]):
@@ -159,6 +165,11 @@ class NavInputs:
     self.events.append((float(t), command, side, banner[0].get('primary', {}).get('text', '')))
 
   def at(self, t: float) -> dict[str, np.ndarray]:
+    if self.last is None or self.last[0] != t:
+      self.last = (t, self.update(t))
+    return self.last[1]
+
+  def update(self, t: float) -> dict[str, np.ndarray]:
     i = int(np.searchsorted(self.fixes[:, 0], t, side='right')) - 1
     if i < 0 or t - self.fixes[i, 0] >= FIX_TIMEOUT:
       return {}
@@ -175,6 +186,27 @@ class NavInputs:
       if k not in self.passed and self.progress + ahead >= d:
         self.passed_maneuver(k, t, nav_map)
     return {'navigation': navigation, 'nav_map': nav_map}
+
+
+def flip_navigation(navigation: np.ndarray) -> np.ndarray:
+  """The navigation input with the maneuver's side mirrored, its distance kept."""
+  out = navigation.copy()
+  for command in np.flatnonzero(navigation[:-1]):
+    if command in FLIPPED:
+      out[command], out[FLIPPED[command]] = 0, navigation[command]
+  return out
+
+
+def ablation_inputs(nav: NavInputs) -> dict:
+  """Extra inputs per run name: the map alone, the instruction alone, both, and both with the instruction mirrored."""
+  def only(name):
+    return lambda t: {k: v for k, v in nav.at(t).items() if k == name}
+
+  def flipped(t):
+    inputs = nav.at(t)
+    return inputs | {'navigation': flip_navigation(inputs['navigation'])} if inputs else {}
+
+  return {'map only': only('nav_map'), 'instruction only': only('navigation'), 'nav on': nav.at, 'nav flipped': flipped}
 
 
 def report(t0, times, speeds, logged_rows, runs, nav, fixes, steps) -> str:
@@ -222,6 +254,8 @@ def main() -> None:
   parser.add_argument("--models", default=MODELS, help="default: OP_MADS_MODELS")
   parser.add_argument("--tiles", required=True, help="PMTiles basemap URL")
   parser.add_argument("--maps", type=Path, help="save the map input at each maneuver to this PNG")
+  parser.add_argument("--ablation", action="store_true",
+                      help="also run the map alone, the instruction alone and the instruction mirrored left/right")
   args = parser.parse_args()
   if not args.models:
     raise SystemExit("set OP_MADS_MODELS or pass --models")
@@ -253,7 +287,8 @@ def main() -> None:
   nav = NavInputs(lambda i: first if i == 0 else router(i), fixes, renderer)
 
   def make_runs(load, of):
-    return [Run("nav off", load(args.model), None), Run("nav on", load(args.model), None, extra_inputs=nav.at)]
+    extra = ablation_inputs(nav) if args.ablation else {"nav on": nav.at}
+    return [Run("nav off", load(args.model), None)] + [Run(name, load(args.model), None, extra_inputs=f) for name, f in extra.items()]
 
   times, speeds, logged_rows, runs, _, _ = replay(route, segments, make_runs, Path(args.models), SERVICES | set(GPS_SERVICES))
   print(report(route_t0(str(route)), times, speeds, logged_rows, runs, nav, fixes, routes[0]))

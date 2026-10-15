@@ -10,7 +10,8 @@ import numpy as np
 from openpilot.selfdrive.navigation.helpers import VALHALLA_COMMAND_COUNT
 from openpilot.selfdrive.navigation.renderer import SIZE
 from openpilot.selfdrive.navigation.route import METERS_PER_DEGREE
-from openpilot.tools.op_mads.nav_model_replay import TURN_VIA_OFFSET, NavInputs, api_key, gps_fixes, route_offsets, via_points
+from openpilot.tools.op_mads.nav_model_replay import TURN_VIA_OFFSET, NavInputs, ablation_inputs, api_key, flip_navigation, gps_fixes, \
+  route_offsets, via_points
 
 DEG = 1 / METERS_PER_DEGREE  # degrees of latitude per meter
 
@@ -155,6 +156,36 @@ class TestNavInputs(unittest.TestCase):
     self.assertEqual(calls[0], 0)
     self.assertGreaterEqual(calls[1], 4)  # the fix index at the reroute
     self.assertEqual(nav.events, [])
+
+
+class TestAblation(unittest.TestCase):
+  def test_flip_swaps_sides(self):
+    for command, flipped in [(10, 15), (15, 10), (9, 16), (11, 14), (18, 19), (21, 20), (23, 24), (13, 13), (8, 8)]:
+      with self.subTest(command=command):
+        navigation = np.zeros(VALHALLA_COMMAND_COUNT + 1, dtype=np.float32)
+        navigation[command], navigation[-1] = 1, 1.5
+        out = flip_navigation(navigation)
+        self.assertEqual(out[flipped], 1)
+        self.assertEqual(out[:-1].sum(), 1)
+        self.assertEqual(out[-1], 1.5)
+        self.assertEqual(navigation[command], 1)  # the input is not changed
+
+  def test_runs_share_one_update_per_frame(self):
+    renderer = FakeRenderer()
+    nav = NavInputs(static(STEPS), np.array([(0., 0, 50 * DEG, 10., 0.)]), renderer)
+    runs = ablation_inputs(nav)
+    self.assertEqual(list(runs), ['map only', 'instruction only', 'nav on', 'nav flipped'])
+    out = {name: f(0.5) for name, f in runs.items()}
+    self.assertEqual(len(renderer.poses), 1)
+    self.assertEqual(set(out['map only']), {'nav_map'})
+    self.assertEqual(set(out['instruction only']), {'navigation'})
+    self.assertEqual(out['nav on']['navigation'][10], 1)
+    self.assertEqual(out['nav flipped']['navigation'][15], 1)
+    self.assertEqual(out['nav flipped']['navigation'][10], 0)
+    self.assertIs(out['nav flipped']['nav_map'], out['nav on']['nav_map'])
+    self.assertEqual({name: f(9.) for name, f in ablation_inputs(NavInputs(static(STEPS), np.array([(10., 0, 0, 1., 0.)]),
+                                                                        FakeRenderer())).items()},
+                     {'map only': {}, 'instruction only': {}, 'nav on': {}, 'nav flipped': {}})
 
 
 class TestRouteOffsets(unittest.TestCase):
