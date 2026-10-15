@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Deploy op-chestnut-mads to the comma four and commit the binaries built there.
+"""Deploy op-chestnut-mads (or another fork branch) to the comma four and commit the binaries built there.
 
-Run from the op-chestnut-mads worktree:
+Run from the worktree of the branch:
   python3 openpilot/tools/op_mads/deploy.py --dry-run   # preflight only
-  python3 openpilot/tools/op_mads/deploy.py [--reboot] [--trailer "Co-Authored-By: ..."]
+  python3 openpilot/tools/op_mads/deploy.py [--branch op-nav-google] [--reboot] [--trailer "Co-Authored-By: ..."]
 
 The merge and the build run in one ssh command: new Python can read params that only the rebuilt
-libparams_c.so knows, so the device must never keep the new code with the old binaries.
+libparams_c.so knows, so the device must never keep the new code with the old binaries. Another branch is
+checked out on the device in that same command; each branch carries its own committed binaries.
 """
 import argparse
 import hashlib
@@ -56,6 +57,21 @@ def commit_message(device_head: str, paths: list[str], trailer: str) -> str:
   return msg + (f"\n{trailer}\n" if trailer else "")
 
 
+def update_command(branch: str, device_branch: str, commits: int) -> str:
+  """Shell to bring the device repo to the fork's branch: a fast-forward on the same branch, else a checkout."""
+  fetch = f"git fetch -q --depth {commits + 10} origin {branch}; "
+  if branch == device_branch:
+    return fetch + "git merge -q --ff-only FETCH_HEAD; "
+  return fetch + f"git checkout -q -B {branch} FETCH_HEAD; "
+
+
+def parse_device_state(out: str) -> tuple[bool, str, str, list[tuple[str, str]]]:
+  """(onroad, branch, HEAD, status) from device_state's ssh output."""
+  head_part, status = out.split("---\n", 1)
+  lines = head_part.splitlines()
+  return device_onroad(lines[0] if lines else ""), lines[-2].strip(), lines[-1].strip(), parse_porcelain(status)
+
+
 def run(cmd: list[str], check: bool = True) -> str:
   return subprocess.run(cmd, cwd=ROOT, check=check, capture_output=True, text=True).stdout
 
@@ -64,12 +80,9 @@ def ssh(script: str, check: bool = True) -> str:
   return run(["ssh", "-o", "ConnectTimeout=8", "-o", "BatchMode=yes", DEVICE, script], check=check)
 
 
-def device_state() -> tuple[bool, str, list[tuple[str, str]]]:
-  out = ssh(f"cat /data/params/d/IsOnroad 2>/dev/null; echo; git -C {DEVICE_DIR} rev-parse HEAD; " +
-            f"echo ---; git -C {DEVICE_DIR} status --porcelain")
-  head_part, status = out.split("---\n", 1)
-  lines = head_part.splitlines()
-  return device_onroad(lines[0] if lines else ""), lines[-1].strip(), parse_porcelain(status)
+def device_state() -> tuple[bool, str, str, list[tuple[str, str]]]:
+  return parse_device_state(ssh(f"cat /data/params/d/IsOnroad 2>/dev/null; echo; git -C {DEVICE_DIR} branch --show-current; " +
+                                f"git -C {DEVICE_DIR} rev-parse HEAD; echo ---; git -C {DEVICE_DIR} status --porcelain"))
 
 
 def fail(msg: str) -> int:
@@ -82,16 +95,18 @@ def main(argv=None) -> int:
   parser.add_argument("--dry-run", action="store_true", help="preflight checks only")
   parser.add_argument("--reboot", action="store_true", help="reboot the device after a successful deploy")
   parser.add_argument("--trailer", default="", help="trailer line for the build commit")
+  parser.add_argument("--branch", default=BRANCH, help=f"fork branch to deploy (default {BRANCH}); the device switches to it")
   args = parser.parse_args(argv)
+  branch = args.branch
 
   # preflight
-  if run(["git", "branch", "--show-current"]).strip() != BRANCH:
-    return fail(f"not on {BRANCH}")
+  if run(["git", "branch", "--show-current"]).strip() != branch:
+    return fail(f"not on {branch}")
   if run(["git", "status", "--porcelain"]).strip():
     return fail("local worktree is not clean")
   head = run(["git", "rev-parse", "HEAD"]).strip()
   try:
-    onroad, device_head, device_status = device_state()
+    onroad, device_branch, device_head, device_status = device_state()
   except subprocess.CalledProcessError as e:
     return fail(f"cannot reach {DEVICE}: {e.stderr.strip()}")
   if onroad:
@@ -100,19 +115,19 @@ def main(argv=None) -> int:
     return fail(f"device has unexpected changes: {dirty}")
   if subprocess.run(["git", "merge-base", "--is-ancestor", device_head, head], cwd=ROOT).returncode != 0:
     return fail(f"device HEAD {device_head[:10]} is not an ancestor of local HEAD")
-  if device_head == head:
+  if device_head == head and device_branch == branch:
     print("device is up to date")
     return 0
   commits = int(run(["git", "rev-list", "--count", f"{device_head}..{head}"]).strip())
-  print(f"deploy {commits} commits: {device_head[:10]} -> {head[:10]}")
+  print(f"deploy {commits} commits: {device_branch} {device_head[:10]} -> {branch} {head[:10]}")
   if args.dry_run:
     print("dry run: preflight passed")
     return 0
 
-  # push, then merge and build in one ssh command
-  run(["git", "push", REMOTE, BRANCH])
-  merge_and_build = (f"set -e; cd {DEVICE_DIR}; git fetch -q --depth {commits + 10} origin {BRANCH}; " +
-                     "git merge -q --ff-only FETCH_HEAD; export PATH=/usr/local/venv/bin:$PATH; mkdir -p /data/tmp_mads; " +
+  # push, then update and build in one ssh command
+  run(["git", "push", REMOTE, branch])
+  merge_and_build = (f"set -e; cd {DEVICE_DIR}; " + update_command(branch, device_branch, commits) +
+                     "export PATH=/usr/local/venv/bin:$PATH; mkdir -p /data/tmp_mads; " +
                      f"scons -j$(nproc) {' '.join(BUILD_TARGETS)} > {SCONS_LOG} 2>&1 || {{ tail -20 {SCONS_LOG}; exit 1; }}")
   build = subprocess.run(["ssh", DEVICE, merge_and_build], capture_output=True, text=True)
   if build.returncode != 0:
@@ -121,7 +136,7 @@ def main(argv=None) -> int:
   print("merged and built on the device")
 
   # bring the build outputs back and verify them
-  _, _, device_status = device_state()
+  _, _, _, device_status = device_state()
   outputs = build_outputs(device_status)
   if untracked := [p for s, p in device_status if s == "??"]:
     print(f"ignoring untracked files on the device: {untracked}")
@@ -134,17 +149,17 @@ def main(argv=None) -> int:
       return fail(f"checksum mismatch after copy: {bad}")
     run(["git", "add", "-u", *outputs])
     run(["git", "commit", "-q", "-m", commit_message(head[:10], outputs, args.trailer)])
-    run(["git", "push", REMOTE, BRANCH])
+    run(["git", "push", REMOTE, branch])
     new_head = run(["git", "rev-parse", "HEAD"]).strip()
-    ssh(f"cd {DEVICE_DIR} && git fetch -q --depth 10 origin {BRANCH} && git reset -q --mixed FETCH_HEAD")
+    ssh(f"cd {DEVICE_DIR} && git fetch -q --depth 10 origin {branch} && git reset -q --mixed FETCH_HEAD")
     print(f"committed {len(outputs)} build outputs as {new_head[:10]}")
   else:
     new_head = head
     print("no build outputs changed")
 
-  onroad, device_head, device_status = device_state()
-  if device_head != new_head or unexpected_dirty(device_status):
-    return fail(f"device HEAD {device_head[:10]} or status does not match local {new_head[:10]}")
+  onroad, device_branch, device_head, device_status = device_state()
+  if device_branch != branch or device_head != new_head or unexpected_dirty(device_status):
+    return fail(f"device {device_branch} {device_head[:10]} or status does not match local {branch} {new_head[:10]}")
   print(f"device HEAD matches {new_head[:10]}")
 
   if args.reboot:
