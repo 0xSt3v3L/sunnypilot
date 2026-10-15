@@ -1,8 +1,16 @@
 # op-chestnut-mads
 
-A personal fork of openpilot v0.11.2 (build `4800490a7`) for one car: a 2024 Taiwan Corolla Altis Hybrid
-(`TOYOTA_COROLLA_TSS2`, torque steering, openpilot longitudinal) with a comma four and a chestnut eGPU.
-The branch is pushed to the git remote `fork`; `origin` is commaai.
+A personal fork of openpilot for one car: a 2024 Taiwan Corolla Altis Hybrid (`TOYOTA_COROLLA_TSS2`, torque steering,
+openpilot longitudinal) with a comma four and a chestnut eGPU. The branch is pushed to the git remote `fork`; `origin` is
+commaai.
+
+Upstream base: openpilot v0.11.3 nightly, master `75b2ccca60` (MD v3 big model), merged on 2026-10-16. Upstream comes in
+as release builds (vendored submodules, prebuilt binaries), which share no history with master: the fork started from
+the v0.11.2 build `4800490a7`, and `a6f7f353b3` is the `nightly-chestnut` build tree committed with `4800490a7` as its
+parent (`git commit-tree origin/nightly-chestnut^{tree} -p <last upstream commit>`), then merged. Do the same for the
+next upstream: conflicts in the fork's own binaries (libparams_c.so, pandad, loggerd, cereal/gen, panda_h7) keep ours
+and get rebuilt; every other prebuilt binary comes from the build. Upstream's "A New Dawn" removed the ExperimentalMode
+param: openpilot longitudinal always runs the experimental (e2e) planner.
 
 ## What this branch adds
 
@@ -53,9 +61,15 @@ The worktree has no Python env. Tests run in a macOS test copy with a uv venv an
 openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if needed, fork tests + core suites, ruff
 ```
 
-- The copy lives next to the worktree (`../op-mads-test`, override with `OP_MADS_TEST`) and is synced by
-  `../op-mads-sync.sh` (`OP_MADS_SYNC`), which copies the files changed since `577b3b55f`. A file reverted back to that
-  base stays stale in the copy; check with `cmp`.
+- The copy lives next to the worktree (`../op-mads-test-v0113`, override with `OP_MADS_TEST`; `../op-mads-test` is the
+  v0.11.2 copy) and is synced by `../op-mads-sync.sh` (`OP_MADS_SYNC`), which copies the files changed since
+  `577b3b55f`. A file reverted back to that base stays stale in the copy; check with `cmp`. The sync skips a Linux (ELF)
+  binary from the release tree where the copy has a macOS native.
+- A copied test copy keeps the old copy's absolute paths in `.venv` (editable `.pth` finders, script shebangs), so
+  `import opendbc` or `tinygrad` silently resolves to the old copy: rewrite them (`grep -rlI` in `.venv/bin` and
+  `.venv/lib`) after copying.
+- tinygrad on the Mac needs `HCQ_RUNTIME_DEV=CPU:CLANG` (there is no libLLVM for its default host runtime) to compile
+  or run models.
 - Single modules: `cd <copy> && .venv/bin/python -m unittest openpilot.selfdrive...test_x`. Lint: `.venv/bin/ruff check`.
 - New param keys need the copy's `libparams_c.dylib` rebuilt (`run_tests.sh` does it).
 - opendbc safety tests use a separate env:
@@ -81,11 +95,12 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - `deploy.py --dry-run` runs the preflight; `deploy.py --reboot --trailer "Co-Authored-By: ..."` deploys and reboots.
 - Device scons is at `/usr/local/venv/bin/scons` (not on the ssh PATH).
 - op flashes the chestnut firmware only while offroad; after switching branches the chestnut may need a manual flash.
-- The device's big driving model is commaai `6f4c0faf1f` "Mountain Dew Model (#39047)", checkpoint `.../8d736683.../12864`,
-  shipped only as a `USB+AMD:LLVM` pkl. comma did not publish its ONNX; it was rebuilt from the device pkl's weights on
-  top of the public `870a4823` export and checked against logged `modelV2` by replay. The files, METAL builds (about
-  30 ms a frame) and how they were made live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README).
-  A new big model on the device means rebuilding that ONNX.
+- The device's big driving model is commaai MD v3 (`1e219d7785`, checkpoint `1365126a.../12864`), shipped only as a
+  `USB+AMD:LLVM` pkl. comma did not publish its ONNX; it was rebuilt from that pkl's weights on top of the official MD
+  (`8d736683`) ONNX, which differs only in the policy (92 buffers), and checked against comma's CI chestnut replay of
+  MD v3. The files, METAL builds for the current tinygrad (`op-mads-models/v0113`, about 29 ms a frame) and how they
+  were made live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README and `mdv3/`). Routes up to
+  000000b1 ran MD (`8d736683`). A new big model on the device means rebuilding that ONNX.
 
 ## Logs and analysis
 
