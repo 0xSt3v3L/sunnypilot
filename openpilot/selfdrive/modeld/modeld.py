@@ -8,7 +8,7 @@ import os
 os.environ['GMMU'] = '0' # for chestnut fast loading, noop for qcom
 os.environ.setdefault('AM_POWER_LIMIT', '100')
 from tinygrad.device import Buffer, Device
-from tinygrad.dtype import DType, dtypes
+from tinygrad.dtype import DType, dtypes, _from_np_dtype
 from tinygrad.engine.realize import lower_and_compile
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import round_up
@@ -173,17 +173,17 @@ class ModelState:
     # Pack host inputs into one upload to reduce USB transfer overhead for the eGPU.
     self.input_queues = {name: Tensor(np.zeros(shape, dtype=dtype), device=self.model_device).realize()
                          for name, (shape, dtype) in self.input_shapes.items() if name in self.state_pairs}
-    shapes = {'tfm': (2, 3, 3)} | {name: shape for name, (shape, _) in self.input_shapes.items()
-                                   if name not in self.state_pairs and name != 'new_img'}
-    npy_size = sum(round_up(math.prod(shape) * 4, 128) for shape in shapes.values())
+    shapes = {'tfm': ((2, 3, 3), np.dtype(np.float32))} | {name: spec for name, spec in self.input_shapes.items()
+                                                          if name not in self.state_pairs and name != 'new_img'}
+    npy_size = sum(round_up(math.prod(shape) * dtype.itemsize, 128) for shape, dtype in shapes.values())
     self.packed_input = np.zeros(npy_size + 2 * self.frame_copy_size, dtype=np.uint8)
     self.input_host = Tensor(self.packed_input, device='NPY')._buffer()
     self.input_device = Tensor(self.packed_input, device=self.model_device)._buffer()
     self.npy = {}
     offset = 0
-    for name, shape in shapes.items():
-      self.npy[name] = np.ndarray(shape, dtype=np.float32, buffer=self.packed_input, offset=offset)
-      self.input_queues[name] = input_view(self.input_device, shape, dtypes.float32, offset)
+    for name, (shape, dtype) in shapes.items():
+      self.npy[name] = np.ndarray(shape, dtype=dtype, buffer=self.packed_input, offset=offset)
+      self.input_queues[name] = input_view(self.input_device, shape, _from_np_dtype(dtype), offset)
       offset += round_up(self.npy[name].nbytes, 128)
     self.frames = self.packed_input[npy_size:].reshape(2, self.frame_copy_size)
     self.warp_inputs = {'input_frame': input_view(self.input_device, self.frames.shape, dtypes.uint8, npy_size), 'M_inv': self.input_queues.pop('tfm')}
@@ -203,6 +203,9 @@ class ModelState:
     self.prev_desire[:] = inputs['desire_pulse']
     self.npy['traffic_convention'][:] = inputs['traffic_convention']
     self.npy['action_t'][:] = inputs['action_t']
+    for name in ('nav_map', 'navigation'):  # only map models take these
+      if name in self.npy:
+        self.npy[name][:] = inputs.get(name, 0)
 
     self.input_device.copy_from(self.input_host)
     self.input_queues['new_img'] = self.run_warp(**self.warp_inputs)
