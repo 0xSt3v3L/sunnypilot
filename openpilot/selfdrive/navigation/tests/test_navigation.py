@@ -23,7 +23,7 @@ from openpilot.selfdrive.navigation.pmtiles import PMTiles, decode_directory, ti
 from openpilot.selfdrive.navigation.renderer import MAJOR, MEDIUM, MINOR, SIZE, STREET, TRACK, MapRenderer, draw_segments, mercator, project, stroke_widths
 from openpilot.selfdrive.navigation.route import RouteTracker
 from openpilot.selfdrive.navigation.tests.test_google import google_step
-from openpilot.selfdrive.navigation.tiles import RemoteTiles
+from openpilot.selfdrive.navigation.tiles import LocalTiles, RemoteTiles
 from openpilot.selfdrive.navigation.vector_tile import decode_lines, decode_roads
 
 METER = 1 / 111319.49079327358  # degrees of latitude
@@ -146,9 +146,16 @@ class TileServerCase(unittest.TestCase):
     self.enterContext(patch('openpilot.selfdrive.navigation.tiles.Paths.comma_home', return_value=self.directory.name))
 
 
-class TestEndToEnd(TileServerCase):
+class TestEndToEnd(unittest.TestCase):
+  def setUp(self):
+    directory = tempfile.TemporaryDirectory()
+    self.addCleanup(directory.cleanup)
+    self.basemap = Path(directory.name) / 'basemap.pmtiles'
+    self.basemap.write_bytes(make_archive(leaf=True))
+    self.enterContext(patch('openpilot.selfdrive.navigation.mapsd.BASEMAP_PATH', self.basemap))
+
   def test_navd_to_map_frames(self):
-    """navd routes a destination over messaging; mapsd fetches tiles over HTTP and renders map frames."""
+    """navd routes a destination over messaging; mapsd renders map frames from the basemap file on the device."""
     destination = {'latitude': 0.01, 'longitude': 0}
     self.enterContext(patch('requests.post', return_value=google_response([google_step([(0, -0.01), (0, 0.01)], 2224, 100, 'DEPART')])))
     with OpenpilotPrefix():
@@ -172,7 +179,6 @@ class TestEndToEnd(TileServerCase):
       # The route is centered over the white road, with the ego arrow three quarters down.
       self.assertEqual((image[128, 128], image[128, 131], image[188, 128], image[195, 128]), (128, 255, 255, 0))
       self.assertEqual(timestamp, sm.logMonoTime['gpsLocationExternal'])
-      fetched = len(self.server.requests)
       tracker = mapsd.tracker
       navd.send_route()  # the same route again, as a restarted mapsd would get it
       frame()
@@ -181,29 +187,31 @@ class TestEndToEnd(TileServerCase):
       self.assertFalse(frame()[0].any())  # black without a route
       values['NavDestination'] = dict(destination)
       self.assertEqual(frame()[0][128, 128], 128)
-      self.assertEqual(len(self.server.requests), fetched)  # the second route is served from the cache
       image, timestamp = frame(fix=False)
       self.assertFalse(image.any() or timestamp)  # black, not stale, without a fix
-      self.api.get.assert_called_once()
-      self.assertTrue(all('Range' in headers for headers in self.server.requests))
-      self.assertTrue(all(headers['If-Match'] == self.server.etag for headers in self.server.requests[1:]))
-      self.assertTrue(all(b'secret' not in p.read_bytes() for p in self.cache.iterdir()))
-      # The archive is replaced on the server and the cache evicted: the next fetch fails, the map goes black,
-      # and after a delay a fresh reader starts over on the new version.
-      self.server.etag = '"new-version"'
-      for cached in self.cache.iterdir():
-        cached.unlink()
-      values.pop('NavDestination')
-      frame()
-      values['NavDestination'] = dict(destination)
+      # Without the basemap file the map is black; after a delay a fresh reader finds it again.
+      mapsd.close()
+      moved = self.basemap.rename(self.basemap.with_suffix('.moved'))
       image, timestamp = frame()
       self.assertFalse(image.any() or timestamp)
-      fetched = len(self.server.requests)
+      moved.rename(self.basemap)
       self.assertFalse(frame()[1])  # not retried yet
-      self.assertEqual(len(self.server.requests), fetched)
       mapsd.retry_at = 0
       self.assertEqual(frame()[0][128, 128], 128)
-      self.assertEqual((self.cache / 'version').read_text().split()[0], '"new-version"')
+
+
+class TestLocalTiles(unittest.TestCase):
+  def test_reads_ranges(self):
+    with tempfile.TemporaryDirectory() as d:
+      path = Path(d) / 'basemap.pmtiles'
+      archive = make_archive(leaf=True)
+      path.write_bytes(archive)
+      with closing(PMTiles(LocalTiles(path))) as reader:
+        self.assertEqual(reader.source.size, len(archive))
+        self.assertEqual(reader.get(0, 0, 0), road_tile())
+        reader.prefetch([(0, 0, 0)])  # a local file needs no prefetch
+      with self.assertRaises(FileNotFoundError):
+        LocalTiles(Path(d) / 'missing.pmtiles')
 
 
 class TestRemoteTiles(TileServerCase):

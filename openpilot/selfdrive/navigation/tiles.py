@@ -1,5 +1,6 @@
 """Byte ranges of the hosted PMTiles basemap, cached on disk."""
 import math
+import os
 import re
 import time
 from pathlib import Path
@@ -13,7 +14,26 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.navigation.pmtiles import HEADER_LENGTH
 
 CACHE_LIMIT = 64 * 1024 * 1024
+# a Protomaps extract (tile zoom 15) put on the device by hand, see the fork's CLAUDE.md
+BASEMAP_PATH = Path(Paths.comma_home() if PC else '/data') / 'navigation' / 'basemap.pmtiles'
 MERGE_GAP = 256 * 1024  # tiles this close together in the archive are fetched in one range request
+
+
+class LocalTiles:
+  """A PMTiles archive on disk, such as the Taiwan extract on the device."""
+
+  def __init__(self, path: Path):
+    self.file = open(path, 'rb')
+    self.size = os.fstat(self.file.fileno()).st_size
+
+  def read(self, offset: int, length: int) -> bytes:
+    return os.pread(self.file.fileno(), length, offset)
+
+  def prefetch(self, ranges):
+    pass
+
+  def close(self):
+    self.file.close()
 
 
 class RemoteTiles:
