@@ -85,7 +85,8 @@ class TestSteps(unittest.TestCase):
     self.assertEqual([s['distance'] for s in steps], [200, 110, 100, 0])
     self.assertEqual([s['duration'] for s in steps], [20, 15, 10, 0])
     np.testing.assert_allclose(steps[1]['geometry']['coordinates'], [(121.002, 25.0), (121.002, 25.001)])
-    np.testing.assert_allclose(steps[3]['geometry']['coordinates'], [(121.003, 25.001)])
+    # the arrival is a zero-length line at the destination, as Mapbox gives it: navd measures along it
+    np.testing.assert_allclose(steps[3]['geometry']['coordinates'], [(121.003, 25.001), (121.003, 25.001)])
 
   def test_banners_announce_the_next_maneuver(self):
     # As in Mapbox, a step's banner describes the maneuver at its end, shown over the whole step.

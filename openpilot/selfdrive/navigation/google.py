@@ -1,8 +1,15 @@
 """Google Routes API routes as the Mapbox-shaped steps navd and the navigation model input expect."""
+import os
+from pathlib import Path
+
 import numpy as np
 import requests
 
+from openpilot.common.hardware import PC
+from openpilot.common.hardware.hw import Paths
+
 ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes'
+KEY_PATH = Path(Paths.comma_home() if PC else '/data') / 'navigation' / 'google_maps_api_key'
 FIELD_MASK = ','.join('routes.legs.steps.' + f for f in ('distanceMeters', 'staticDuration', 'polyline.encodedPolyline',
                                                          'navigationInstruction'))
 RAMP_EXIT_SPEED = 70 / 3.6  # m/s; a ramp taken from a road at least this fast is an exit, otherwise an on ramp
@@ -20,6 +27,14 @@ MANEUVERS = {
   'FERRY': ('notification', ''), 'FERRY_TRAIN': ('notification', ''),
   'DEPART': ('depart', ''),
 }
+
+
+def load_api_key(path: Path = KEY_PATH) -> str | None:
+  """The Google Maps Platform key: GOOGLE_MAPS_API_KEY, else the key file put on the device by hand."""
+  try:
+    return os.environ.get('GOOGLE_MAPS_API_KEY') or path.read_text().strip() or None
+  except OSError:
+    return None
 
 
 def decode_polyline(encoded: str) -> np.ndarray:
@@ -65,7 +80,8 @@ def steps_from_route(response: dict) -> list[dict]:
     previous_speed = distance / duration if duration > 0 else 0.
   if not steps:
     return []
-  steps.append({'distance': 0, 'duration': 0, 'geometry': {'coordinates': steps[-1]['geometry']['coordinates'][-1:]},
+  # the arrival is a zero-length line at the destination, as Mapbox gives it: navd measures along it
+  steps.append({'distance': 0, 'duration': 0, 'geometry': {'coordinates': steps[-1]['geometry']['coordinates'][-1:] * 2},
                 'maneuver': {'type': 'arrive', 'modifier': ''}, 'text': ''})
   # As in Mapbox, a step's banner announces the maneuver at its end; the arrive step has none
   for step, following in zip(steps[:-1], steps[1:], strict=True):
