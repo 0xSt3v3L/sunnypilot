@@ -156,6 +156,11 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   before every stop (sunnypilot's own modeld derives curvature differently and did not). `low_speed_lat.py` drops
   requests under 0.03 m/s^2 below 3 m/s, also with a blinker on (with either blinker the stop bias is +0.005 to
   +0.011 m/s^2 and turned the wheel 22-38 deg right); real low-speed turns ask for 0.15+ m/s^2 and are untouched.
+  MD v3 halves that bias in offline replays of the same frames (small requests while stopping: median +0.005 vs +0.011
+  without a blinker, +0.012 vs +0.022 with one) but does not remove it, so the deadband stays. Same replays: the
+  7-22 km/h swing component is unchanged, low-speed turn peaks are about 5% larger, launches behind a moving lead ask
+  for about +0.15 m/s^2 more, and a9 726-744 s (not following a lead pulling away) is unchanged
+  (`op-mads-logs/mdv3_ab.txt`).
 - The 7-22 km/h left-right wheel swing (~1.3 s period) is in the model's request, not the torque controller: the
   request (as wheel angle) swings as much as the wheel, the wheel 0.4 s behind, and a closed-loop sim with the real
   controller is stable with a zero request. Controller changes (lower KP, a D term) only shrink it. `LowSpeedLatShaper`
