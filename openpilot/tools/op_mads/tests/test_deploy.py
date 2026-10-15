@@ -1,6 +1,6 @@
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.tools.op_mads.deploy import (parse_porcelain, build_outputs, unexpected_dirty, parse_sha256sum, checksum_mismatches,
-                                            device_onroad, commit_message, update_command, parse_device_state, IGNORED_DIRTY,
+                                            device_onroad, commit_message, update_command, parse_device_state, ancestry_required, IGNORED_DIRTY,
                                             BUILD_TARGETS)
 
 STATUS = " M openpilot/common/libparams_c.so\n?? openpilot/new_file\n M panda/board/obj/version\n M panda/board/obj/gitversion.h\n"
@@ -58,6 +58,11 @@ class TestDeployHelpers(OpenpilotTestCase):
     assert "git fetch -q --depth 15 origin op-nav-google" in cmd
     assert "git checkout -q -B op-nav-google FETCH_HEAD" in cmd
     assert "merge" not in cmd
+
+  def test_ancestry_only_on_the_same_branch(self):
+    # going back from op-nav-google, the device HEAD is not an ancestor; its build commits are already on the fork
+    assert ancestry_required("op-chestnut-mads", "op-chestnut-mads")
+    assert not ancestry_required("op-chestnut-mads", "op-nav-google")
 
   def test_parse_device_state(self):
     onroad, branch, head, status = parse_device_state("0\nop-nav-google\nabc123\n---\n M panda/board/obj/version\n")
