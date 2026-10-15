@@ -198,18 +198,20 @@ class Buf:
 
 class Run:
   """One model instance with its own desire state; lane_turn None feeds the logged desire."""
-  def __init__(self, name: str, model, lane_turn: bool | None, action_t_extra: float = 0.):
+  def __init__(self, name: str, model, lane_turn: bool | None, action_t_extra: float = 0., extra_inputs=None):
     from openpilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
     from openpilot.common.realtime import DT_MDL
     from openpilot.selfdrive.controls.lib.low_speed_lat import LowSpeedLatShaper
     from openpilot.selfdrive.modeld.fill_model_msg import PublishState
     self.name, self.model, self.lane_turn, self.action_t_extra = name, model, lane_turn, action_t_extra
+    self.extra_inputs = extra_inputs  # t -> more model inputs, such as the navigation ones
     self.dh, self.relc, self.publish_state = DesireHelper(), RoadEdgeLaneChangeController(), PublishState()
     self.prev_action = log.ModelDataV2.Action()
     self.lat_shaper = LowSpeedLatShaper(DT_MDL)
     self.rows: list[dict[str, float]] = []
 
-  def step(self, md, bufs, transforms, desire, inputs, v_ego, lat_action_t, long_action_t, logged, car_state, lat_active):
+  def step(self, md, bufs, transforms, desire, inputs, v_ego, lat_action_t, long_action_t, logged, car_state, lat_active,
+           t: float = 0.):
     from openpilot.cereal import messaging
     from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg
     if self.lane_turn is not None:
@@ -217,6 +219,8 @@ class Run:
     lat_action_t += extra_lat_action_t(car_state, self.action_t_extra)
     inputs = inputs | {"desire_pulse": desire_vector(desire),
                        "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32)}
+    if self.extra_inputs is not None:
+      inputs |= self.extra_inputs(t)
     out = self.model.run(bufs, transforms, inputs)
     self.prev_action = md.get_action_from_model(out, self.prev_action, lat_action_t, long_action_t, v_ego, self.lat_shaper)
     msg = messaging.new_message("modelV2")
@@ -230,13 +234,13 @@ class Run:
     self.rows.append(features(mv2))
 
 
-def load_model(md, models: Path, w: int, h: int):
+def load_model(md, models: Path, w: int, h: int, pkl: str = MODEL_PKL):
   from tinygrad import Context
   from tinygrad_repo.examples.openpilot.helpers import load_pickle
 
   def load_metal(path, chestnut=False):
     with Context(DEV="METAL"):
-      return load_pickle(models / MODEL_PKL, out_of_band=True)
+      return load_pickle(models / pkl, out_of_band=True)
 
   md.load_oob, md.MODELS_DIR = load_metal, models
   model = md.ModelState(w, h, True)
@@ -244,7 +248,19 @@ def load_model(md, models: Path, w: int, h: int):
   return model
 
 
-def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.3, 0.6)):
+def mode_runs(mode: str, extras=(0.3, 0.6)):
+  """make_runs for replay(): the runs of a --mode."""
+  def make_runs(load, of):
+    if mode == "logged":
+      return [Run("replay", load(), None)]
+    if mode == "ab":
+      return [Run("lane turn off", load(), False), Run("lane turn on", load(), True)]
+    return [Run("baseline", load(), None)] + [Run(f"action_t +{e:g}s", load(), None, e) for e in extras]
+  return make_runs
+
+
+def replay(route: Path, segments: list[int], make_runs, models: Path, services=SERVICES):
+  """make_runs(load, of) gives the runs; load(pkl=MODEL_PKL) loads a model, of holds the messages by service."""
   from openpilot.common.realtime import DT_MDL
   from openpilot.common.transformations.camera import DEVICE_CAMERAS
   from openpilot.common.transformations.model import get_warp_matrix
@@ -253,20 +269,14 @@ def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.
 
   rlogs, _ = route_segments(str(route))
   rlogs = [p for p in rlogs if int(p.parent.name) in segments]
-  msgs = sorted((m for p in rlogs for m in LogReader(str(p)) if m.which() in SERVICES), key=lambda m: m.logMonoTime)
-  of = {s: _of(msgs, s) for s in SERVICES}
+  msgs = sorted((m for p in rlogs for m in LogReader(str(p)) if m.which() in services), key=lambda m: m.logMonoTime)
+  of = {s: _of(msgs, s) for s in services}
   CP = of["carParams"][0][1]
   dc = DEVICE_CAMERAS[(str(of["deviceState"][0][1].deviceType), str(of["narrowRoadCameraState"][0][1].sensor))]
   w, h = dc.narrow_road.width, dc.narrow_road.height
   main, extra = (Camera(route, (k, of[k]), w, h) for k in VIDEOS)
 
-  model = load_model(md, models, w, h)
-  if mode == "logged":
-    runs = [Run("replay", model, None)]
-  elif mode == "ab":
-    runs = [Run("lane turn off", model, False), Run("lane turn on", load_model(md, models, w, h), True)]
-  else:
-    runs = [Run("baseline", model, None)] + [Run(f"action_t +{e:g}s", load_model(md, models, w, h), None, e) for e in extras]
+  runs = make_runs(lambda pkl=MODEL_PKL: load_model(md, models, w, h, pkl), of)
   long_action_t = CP.longitudinalActuatorDelay + md.LONG_SMOOTH_SECONDS + DT_MDL + DT_MDL / 2
   times, speeds, logged_rows, turns, run_ms = [], [], [], [], []
   prev_mv = None
@@ -292,7 +302,7 @@ def replay(route: Path, segments: list[int], mode: str, models: Path, extras=(0.
     st = time.perf_counter()
     for r in runs:
       r.step(md, {k: Buf(b) for k, b in bufs.items()}, transforms, desire, inputs, v_ego, lat_action_t, long_action_t,
-             mv, cs, cc is not None and cc.latActive)
+             mv, cs, cc is not None and cc.latActive, t)
     run_ms.append((time.perf_counter() - st) * 1e3 / len(runs))
     times.append(t)
     speeds.append(v_ego)
@@ -344,7 +354,7 @@ def main() -> None:
   route = Path(args.route_dir)
   rlogs, _ = route_segments(str(route))
   segments = parse_segments(args.segments, [int(p.parent.name) for p in rlogs])
-  out = replay(route, segments, args.mode, Path(args.models), parse_extras(args.extras))
+  out = replay(route, segments, mode_runs(args.mode, parse_extras(args.extras)), Path(args.models))
   print(report(route_t0(str(route)), *out))
 
 

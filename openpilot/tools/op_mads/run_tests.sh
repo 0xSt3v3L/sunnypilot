@@ -17,7 +17,7 @@ CORE=(
   openpilot.cereal.messaging.tests.test_services
 )
 
-"$SYNC"
+OP_MADS_WT="$WT" "$SYNC"  # copy from this worktree
 cd "$TEST"
 
 # the Python params bindings only know the keys compiled into libparams_c

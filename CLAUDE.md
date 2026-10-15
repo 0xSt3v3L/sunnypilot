@@ -19,6 +19,7 @@ Most features are ported from sunnypilot (MIT; keep a local checkout to compare 
 | Low-speed lateral deadband (no wheel turn before a stop) and swing shaping (7-22 km/h) | `selfdrive/controls/lib/low_speed_lat.py`, `modeld.py` |
 | Toyota resume race fix (RES while braking latched a cruise fault) | safety `opendbc_repo/opendbc/safety/modes/toyota.h`; firmware `panda/board/obj` |
 | MADS process replay | `selfdrive/test/process_replay/mads_replay.py` |
+| Navigation with Google routes, offline only (branch `op-nav-google`; navd/mapsd not on the device yet) | `selfdrive/navigation/` (renderer and tracking from comma's nav-model-integration, `google.py`), `modeld.py` nav inputs, `tools/op_mads/nav_model_replay.py` |
 | Dev tools | `openpilot/tools/op_mads/` (deploy, tests, drive report, problem map, frames, route pull) |
 
 Paths in the table are under `openpilot/` unless they start with `opendbc_repo/` or `panda/`.
@@ -113,6 +114,25 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   `action_t` adds `--extras` seconds to the model's lateral action time in low-speed blinker turns.
   The first 10 s are model warm-up. Needs `OP_MADS_MODELS`, `DEV=METAL` and `$PWD/tinygrad_repo` on `PYTHONPATH`.
   Encoded video makes the replay inexact: rmse/std about 0.03-0.2 against the log is the floor.
+  The low-speed lateral shaping postdates routes up to 000000a5, so their logged desiredCurvature no longer matches a
+  replay (rmse/std about 1.1 on a5/2); the model outputs themselves still do.
+- `nav_model_replay.py <route dir> --segments 5-9 --model big_nav_afbf2e5_metal.pkl --tiles <PMTiles URL> [--maps out.png]`:
+  runs comma's nav model twice over the same frames, without and with the map and navigation inputs, from a Google route
+  along the driven GPS track, and prints the curvature (+ = right) around each turn maneuver. Google key from
+  `GOOGLE_MAPS_API_KEY` or `~/.config/op-mads/google_maps_api_key`; `--tiles` is a public Protomaps build
+  (`https://build.protomaps.com/<yyyymmdd>.pmtiles`, list at `build-metadata.protomaps.dev/builds.json`), read by range
+  and cached in `~/.comma/navigation/tiles`. Same environment as `big_model_replay.py`.
+  - Vias go 40 m past each driven turn with the direction of travel (and every 400 m on long stretches, at most 25):
+    dense or headingless vias make Google detour into alleys and U-turn. Like navd, the replay reroutes after more than
+    3 s over 25 m off the route; a new route's progress starts at 0 so a loop back past its start cannot capture it.
+  - GPS after a cold start can sit 30-40 m off the road for minutes (a5 until about 300 s, `horizontalAccuracy` about
+    10 m); later fixes are within a few meters. Pick segments after that.
+  - Model files: the branch's ONNX is "rl nav driving model" (checkpoint 80eedcdd), in `op-mads-models/nav_afbf2e5/`,
+    compiled with `tinygrad_repo/examples/openpilot/compile_onnx.py --out-of-band` (`DEV=METAL JIT=2`). The newer n16
+    nav-wm model exists only as the device pkl. Its inputs: `nav_map` float32 (1, 1, 256, 256) fed the 0-255 map,
+    `navigation` (1, 47) = Valhalla command one-hot + distance / 100. openpilot's LFS objects live on
+    `huggingface.co/commaai/openpilot-lfs` (see `.lfsconfig`): fetch one through its LFS batch API by oid and size.
+  - comma's nav endpoints (`v1/<dongle>/nav/tiles`, `v1/nav/directions`) answer 403 to this device's valid JWT.
 
 ## Conventions and invariants
 
