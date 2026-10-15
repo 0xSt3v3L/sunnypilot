@@ -1,6 +1,7 @@
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.tools.op_mads.deploy import (parse_porcelain, build_outputs, unexpected_dirty, parse_sha256sum, checksum_mismatches,
-                                            device_onroad, commit_message, IGNORED_DIRTY, BUILD_TARGETS)
+                                            device_onroad, commit_message, update_command, parse_device_state, IGNORED_DIRTY,
+                                            BUILD_TARGETS)
 
 STATUS = " M openpilot/common/libparams_c.so\n?? openpilot/new_file\n M panda/board/obj/version\n M panda/board/obj/gitversion.h\n"
 
@@ -44,3 +45,22 @@ class TestDeployHelpers(OpenpilotTestCase):
     assert "abc1234" in msg and "openpilot/common/libparams_c.so" in msg
     assert "Co-Authored-By" not in msg
     assert commit_message("abc1234", [], trailer="Co-Authored-By: x <y>").rstrip().endswith("Co-Authored-By: x <y>")
+
+  def test_update_command_same_branch_fast_forwards(self):
+    cmd = update_command("op-chestnut-mads", "op-chestnut-mads", 3)
+    assert "git fetch -q --depth 13 origin op-chestnut-mads" in cmd
+    assert "git merge -q --ff-only FETCH_HEAD" in cmd
+    assert "checkout" not in cmd
+
+  def test_update_command_switches_branch(self):
+    # the committed binaries come with the branch, so switching keeps code and binaries matched
+    cmd = update_command("op-nav-google", "op-chestnut-mads", 5)
+    assert "git fetch -q --depth 15 origin op-nav-google" in cmd
+    assert "git checkout -q -B op-nav-google FETCH_HEAD" in cmd
+    assert "merge" not in cmd
+
+  def test_parse_device_state(self):
+    onroad, branch, head, status = parse_device_state("0\nop-nav-google\nabc123\n---\n M panda/board/obj/version\n")
+    assert (onroad, branch, head) == (False, "op-nav-google", "abc123")
+    assert status == [("M", "panda/board/obj/version")]
+    assert parse_device_state("1\nop-chestnut-mads\ndef456\n---\n")[0]
