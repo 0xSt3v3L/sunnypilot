@@ -1,4 +1,5 @@
 """Byte ranges of the hosted PMTiles basemap, cached on disk."""
+import math
 import re
 import time
 from pathlib import Path
@@ -16,13 +17,14 @@ MERGE_GAP = 256 * 1024  # tiles this close together in the archive are fetched i
 
 
 class RemoteTiles:
-  def __init__(self):
+  def __init__(self, url: str | None = None):
+    """The comma-hosted archive, or a fixed archive URL (a public Protomaps build) read without the comma API."""
     self.cache = Path(Paths.comma_home() if PC else '/data') / 'navigation' / 'tiles'
     self.cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     self.session = requests.Session()
-    self.api = Api(Params().get('DongleId'))
-    self.url = ''
-    self.expires = 0
+    self.api = Api(Params().get('DongleId')) if url is None else None
+    self.url = url or ''
+    self.expires = 0 if url is None else math.inf
     self.etag = None
     self.size = 0
     version = self.cache / 'version'
