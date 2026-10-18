@@ -95,12 +95,19 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 - `deploy.py --dry-run` runs the preflight; `deploy.py --reboot --trailer "Co-Authored-By: ..."` deploys and reboots.
 - Device scons is at `/usr/local/venv/bin/scons` (not on the ssh PATH).
 - op flashes the chestnut firmware only while offroad; after switching branches the chestnut may need a manual flash.
-- The device's big driving model is commaai MD v3 (`1e219d7785`, checkpoint `1365126a.../12864`), shipped only as a
-  `USB+AMD:LLVM` pkl. comma did not publish its ONNX; it was rebuilt from that pkl's weights on top of the official MD
-  (`8d736683`) ONNX, which differs only in the policy (92 buffers), and checked against comma's CI chestnut replay of
-  MD v3. The files, METAL builds for the current tinygrad (`op-mads-models/v0113`, about 29 ms a frame) and how they
-  were made live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README and `mdv3/`). Routes up to
-  000000b1 ran MD (`8d736683`). A new big model on the device means rebuilding that ONNX.
+- The device's big driving model is commaai MD (`8d736683`), back from MD v3 on 2026-10-19: the v0.11.3 tree's pkl
+  is the one upstream recompiled for its tinygrad (`21edbbcfb9`, LFS oid `b3864072`); a big model pkl only loads with
+  the tinygrad it was compiled with (the Cinque v3 pkl fails on the current one). Routes up to 000000b1 ran MD (the
+  v0.11.2 build of it, `256f2178`), 000000b2-000000c4 MD v3 (`1365126a`). MD v3 was dropped for cutting curves:
+  inside offset median 0.58 m on the car vs 0.39 m with MD. The big models since BMRLNAP v6 were compared offline
+  (`op-mads-logs/model_compare.txt`, scripts in `op-mads-models/compare/`): BMV6 is best on curves, no-lead speed,
+  lead pull-away and launches but turns at intersections with about 0.6x MD v3's curvature, and needs the pre-#38916
+  input queues ported; no model brakes for a red light before about 25 m (< -1 m/s^2). Big model pkls are
+  `USB+AMD:LLVM` only; comma published ONNX for some (HuggingFace `commaai/openpilot_driving_models`), MD v3's was
+  rebuilt from its pkl's weights on top of the official MD ONNX (differs only in the policy, 92 buffers). The ONNX
+  files, METAL builds for the current tinygrad (`op-mads-models/v0113`, about 29 ms a frame) and how they were made
+  live next to the logs in `op-mads-models/` (`OP_MADS_MODELS`, see its README, `mdv3/`, `compare/`). A new big model
+  on the device means checking its offline replay first.
 
 ## Logs and analysis
 
