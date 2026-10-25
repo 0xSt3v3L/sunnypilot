@@ -18,6 +18,7 @@ from opendbc.car.carlog import carlog
 from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
+from opendbc.car.toyota.eps_probe import with_eps_probe
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 from openpilot.selfdrive.selfdrived.mads import set_mads_alternative_experience
@@ -100,6 +101,9 @@ class Car:
           cached_params = _cached_params
 
       self.CI = get_car(*self.can_callbacks, obd_callback(self.params), alpha_long_allowed, is_release, cached_params)
+      # EPS probe: joystick debug mode raises the Toyota LKA torque limit (car controller and panda) for this drive
+      if self.params.get_bool("JoystickDebugMode"):
+        self.CI = with_eps_probe(self.CI)
       self.RI = interfaces[self.CI.CP.carFingerprint].RadarInterface(self.CI.CP)
       self.CP = self.CI.CP
 

@@ -10,6 +10,7 @@ from openpilot.common.realtime import DT_CTRL, Ratekeeper
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.controls.lib.drive_helpers import should_stop
+from openpilot.selfdrive.selfdrived.mads import mads_lat_active
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
 MAX_LAT_ACCEL = 3.0
@@ -21,7 +22,8 @@ def joystickd_thread():
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
   VM = VehicleModel(CP)
 
-  sm = messaging.SubMaster(['carState', 'onroadEvents', 'vehicleParameters', 'selfdriveState', 'testJoystick'], frequency=1. / DT_CTRL)
+  sm = messaging.SubMaster(['carState', 'onroadEvents', 'vehicleParameters', 'selfdriveState', 'selfdriveStateSP', 'testJoystick'],
+                           frequency=1. / DT_CTRL)
   pm = messaging.PubMaster(['carControl', 'controlsState'])
 
   rk = Ratekeeper(100, print_delay_threshold=None)
@@ -32,7 +34,9 @@ def joystickd_thread():
     cc_msg.valid = True
     CC = cc_msg.carControl
     CC.enabled = sm['selfdriveState'].enabled
-    CC.latActive = sm['selfdriveState'].active and not sm['carState'].steerFaultTemporary and not sm['carState'].steerFaultPermanent
+    # MADS lateral (ACC main is enough), no standstill check: the EPS probe steers in D with the brake held
+    CC.latActive = mads_lat_active(sm['selfdriveState'], sm['selfdriveStateSP']) and not sm['carState'].steerFaultTemporary and \
+                   not sm['carState'].steerFaultPermanent
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in sm['onroadEvents']) and CP.openpilotLongitudinalControl
     CC.cruiseControl.override = CC.enabled and not CC.longActive and CP.openpilotLongitudinalControl
     CC.cruiseControl.cancel = sm['carState'].cruiseState.enabled and (not CC.enabled or not CP.pcmCruise)
