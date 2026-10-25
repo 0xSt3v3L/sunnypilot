@@ -566,6 +566,16 @@ class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest
         self.assertEqual(self.safety.get_angle_meas_max(), 0)
 
 
+class TestToyotaEpsProbeSafety(TestToyotaSafetyTorque):
+  """EPS probe mode (debug builds only): every torque check at the raised 3000 limit."""
+
+  MAX_TORQUE_LOOKUP = [0], [3000]
+
+  @property
+  def SAFETY_PARAM(self):
+    return self.EPS_SCALE | ToyotaSafetyFlags.EPS_PROBE
+
+
 class TestToyotaAltBrakeSafety(TestToyotaSafetyTorque):
 
   DBC = "toyota_new_mc_pt_generated"
