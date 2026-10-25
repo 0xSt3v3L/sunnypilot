@@ -4,8 +4,14 @@ from opendbc.car.structs import car
 from opendbc.car.toyota.eps_probe import with_eps_probe
 from opendbc.car.toyota.values import CAR
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.tools.op_mads.eps_probe import (DEFAULT_LEVELS, abort_reason, build_schedule, level_verdict, levels_from_args,
-                                               probe_ready)
+import os
+import signal
+import tempfile
+from pathlib import Path
+
+from openpilot.tools.op_mads.eps_probe import (DEFAULT_LEVELS, NO_LATERAL, abort_reason, acquire_lock, build_schedule,
+                                               install_signal_handlers, level_verdict, levels_from_args, probe_ready, stage2_decision,
+                                               tx_blocked_reason)
 
 
 def corolla_ci():
@@ -69,3 +75,47 @@ class TestEpsProbeVerdict(OpenpilotTestCase):
     CI = corolla_ci()
     assert not probe_ready(CI.CP)
     assert probe_ready(with_eps_probe(CI).CP)
+
+
+class TestEpsProbeReviewFixes(OpenpilotTestCase):
+  def test_panda_tx_blocked_is_not_an_eps_result(self):
+    assert tx_blocked_reason(3, 3) is None
+    reason = tx_blocked_reason(3, 4)
+    assert reason is not None and "panda" in reason and "not an EPS result" in reason
+
+  def test_sighup_and_sigterm_raise_keyboard_interrupt(self):
+    old = {s: signal.getsignal(s) for s in (signal.SIGHUP, signal.SIGTERM)}
+    try:
+      install_signal_handlers()
+      for sig in (signal.SIGHUP, signal.SIGTERM):
+        try:
+          os.kill(os.getpid(), sig)
+          raise AssertionError("no KeyboardInterrupt")
+        except KeyboardInterrupt:
+          pass
+    finally:
+      for sig, handler in old.items():
+        signal.signal(sig, handler)
+
+  def test_second_instance_is_refused(self):
+    path = Path(tempfile.mkdtemp()) / "lock"
+    first = acquire_lock(path)
+    assert first is not None
+    assert acquire_lock(path) is None
+    first.close()
+    assert acquire_lock(path) is not None
+
+  def test_stage2_decision(self):
+    accept = [(lv, "ACCEPT") for lv in (1500, 1800, 2100)]
+    assert stage2_decision(1, accept, None).startswith("stage 2: GO")
+    assert stage2_decision(1, [], NO_LATERAL).startswith("stage 2: GO")
+    assert stage2_decision(1, [(1500, "NO-RESPONSE"), (1500, "NO-RESPONSE")], None).startswith("stage 2: GO")
+    fault_1500 = stage2_decision(1, [(1500, "FAULT")], "steer fault")
+    assert fault_1500.startswith("stage 2: GO") and "JoystickDebugMode" in fault_1500
+    assert stage2_decision(1, [(1500, "ACCEPT"), (1500, "ACCEPT"), (1800, "FAULT")], "steer fault").startswith("stage 2: NO")
+    assert stage2_decision(1, [(1500, "ACCEPT"), (1500, "ACCEPT"), (1800, "CLIP"), (1800, "CLIP")], None).startswith("stage 2: NO")
+    assert stage2_decision(1, [(1500, "CLIP"), (1500, "CLIP")], None).startswith("stage 2: UNDECIDED")
+    assert stage2_decision(1, [(1500, "ACCEPT"), (1500, "NO-RESPONSE")], None).startswith("stage 2: UNDECIDED")
+    assert stage2_decision(1, [(1500, "ACCEPT")], "driver steering").startswith("stage 2: UNDECIDED")
+    assert stage2_decision(1, [(1500, "ACCEPT")], tx_blocked_reason(0, 1)).startswith("stage 2: UNDECIDED")
+    assert stage2_decision(2, accept, None) == ""

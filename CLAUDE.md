@@ -24,8 +24,14 @@ Design and plan: `docs/superpowers/specs/2026-10-26-toyota-eps-above-1500-probe-
 - In a probe drive `controlsd` never steers, `joystickd` follows MADS lateral (ACC main is enough; no standstill check),
   and `openpilot/tools/op_mads/eps_probe.py` is the only `testJoystick` publisher. Its `--help` is the in-car procedure.
 - Never change `JoystickDebugMode` while onroad. It clears itself on the onroad-to-offroad transition.
-- The firmware keeps the version string `DEV-6f4c0faf-DEBUG` (it comes from the build copy's git HEAD), so after a
-  switch check `Done flashing` in swaglog instead of the version.
+- The firmware keeps the version string `DEV-6f4c0faf-DEBUG` (it comes from the build copy's git HEAD), so after the
+  reboot that follows a switch, check that pandad flashed: swaglog shows `panda firmware out of date` and
+  `done flashing panda` once each. If the panda still blocks torque above 1500, `eps_probe.py` aborts with
+  "panda blocked steering" instead of reporting an EPS fault.
+- Run `eps_probe.py` inside `tmux` (a dropped SSH session does not stop it; SIGHUP and SIGTERM stop it cleanly). To stop
+  a run at once without SSH: ACC main off (MADS drops lateral) or hold the wheel (driver steering aborts it).
+- Pre-flight at home after the switch: `eps_probe.py --stage 1` on a normal drive must print "probe mode is not active"
+  (this checks the imports and params on the device; `--dry-run` imports nothing).
 
 Switch the device to the probe (offroad; push and reboot only with the user's approval):
 
@@ -40,7 +46,7 @@ Back to the normal build (offroad, then reboot; pandad flashes the normal firmwa
 ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/dev/null)" != 1; git checkout -q -- panda/board/obj/gitversion.h panda/board/obj/version; git checkout -q op-chestnut-mads; git log --oneline -1'
 ```
 
-After each reboot: `ssh comma_4 'grep -h "Done flashing\|connected, version" /data/log/swaglog.* | tail -3'`.
+After each reboot: `ssh comma_4 'grep -h "firmware out of date\|done flashing panda" /data/log/swaglog.* | tail -3'`.
 After the test: pull the route with `pull_route.sh` and copy `/data/eps_probe/` from the device.
 
 ## What this branch adds

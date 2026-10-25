@@ -142,8 +142,8 @@ start/end monoTime, the abort reason if any. The analysis aligns it with the rlo
 
 ### In-car procedure (to be printed in the test branch's CLAUDE.md and as `eps_probe.py --help`)
 
-1. At home: deploy the test branch, reboot, confirm the panda flashed (`Done flashing` in swaglog) and the device is
-   healthy. Drive to the venue normally (probe mode is off: stock 1500).
+1. At home: deploy the test branch, reboot, confirm the panda flashed (`panda firmware out of date` and
+   `done flashing panda` in swaglog) and the device is healthy. Drive to the venue normally (probe mode is off: stock 1500).
 2. At the venue, car off (device offroad): SSH in, `echo -n 1 > /data/params/d/JoystickDebugMode`.
 3. Car on (READY), ACC main on, D, foot on the brake. Check the onroad screen shows the joystick alert and MADS active.
 4. Run stage 1. Keep hands near (not on) the wheel, foot on the brake.
