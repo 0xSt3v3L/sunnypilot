@@ -31,7 +31,9 @@ Design and plan: `docs/superpowers/specs/2026-10-26-toyota-eps-above-1500-probe-
 - Run `eps_probe.py` inside `tmux` (a dropped SSH session does not stop it; SIGHUP and SIGTERM stop it cleanly). To stop
   a run at once without SSH: ACC main off (MADS drops lateral) or hold the wheel (driver steering aborts it).
 - Pre-flight at home after the switch: `eps_probe.py --stage 1` on a normal drive must print "probe mode is not active"
-  (this checks the imports and params on the device; `--dry-run` imports nothing).
+  (this checks the imports and params on the device; `--dry-run` imports nothing). Passed on 2026-10-26 at `ebeda7b`.
+- Run device commands in a login shell: an interactive `ssh comma_4` is one; for `ssh comma_4 '<cmd>'` use
+  `bash -lc "<cmd>"`, otherwise `python3` is `/usr/bin/python3` without capnp.
 
 Switch the device to the probe (offroad; push and reboot only with the user's approval):
 
