@@ -152,7 +152,7 @@ class TestCurves(OpenpilotTestCase):
   def test_curve_with_slowdown(self):
     sr, wb, a_y = 15., 2.7, 2.
     angle_deg = math.degrees(a_y * sr * wb / 15. ** 2)
-    msgs = [car_params(steer_ratio=sr, wheelbase=wb), at(0., selfdriveState={"enabled": True, "experimentalMode": True}),
+    msgs = [car_params(steer_ratio=sr, wheelbase=wb), at(0., selfdriveState={"enabled": True, "deprecated": {"experimentalMode": True}}),
             at(0., longitudinalPlan={"longitudinalPlanSource": "e2e"})]
     for t in ticks(0., 16.):
       v, angle = (20., 0.) if t < 10. else (15., angle_deg) if t < 13. else (15., 0.)
@@ -313,7 +313,7 @@ class TestPhantomBrakes(OpenpilotTestCase):
       accel = -1.5 if any(a <= t < b for a, b in braking) else 0.
       msgs.append(at(t, carState={"vEgo": v, "brakePressed": 21. <= t < 22.}))
       msgs.append(at(t + 0.001, carControl={"actuators": {"accel": accel}, "longActive": True}))
-      msgs.append(at(t + 0.002, selfdriveState={"enabled": True, "experimentalMode": True}))
+      msgs.append(at(t + 0.002, selfdriveState={"enabled": True, "deprecated": {"experimentalMode": True}}))
     for t in ticks(0., 23., DT_MDL):
       msgs.append(at(t, radarState={"leadOne": {"present": 1.5 <= t < 3., "dRel": 15.}}))
       msgs.append(at(t + 0.001, modelV2={"position": {"x": [0., 2., 5.] if 9.5 <= t < 11. else [0., 50., 150.]},

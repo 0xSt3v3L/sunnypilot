@@ -21,7 +21,7 @@ class TestFrames(OpenpilotTestCase):
   def test_captions(self):
     msgs = [at(0., carState={"vEgo": 10.}), at(0., radarState={"leadOne": {"present": True, "dRel": 12.3}}),
             at(0., modelV2={"position": {"x": [0., 20., 45.]}}), at(0., carControl={"actuators": {"accel": -1.24}}),
-            at(0., selfdriveState={"enabled": True, "experimentalMode": True})]
+            at(0., selfdriveState={"enabled": True, "deprecated": {"experimentalMode": True}})]
     top, bottom = captions(msgs, 1.0, t0=0.)
     assert top == "1.0s  36 km/h  accel -1.2"
     assert bottom == "lead 12.3m  plan 45m  op long, experimental"

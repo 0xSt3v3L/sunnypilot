@@ -40,7 +40,7 @@ def captions(msgs, t: float, t0: float) -> tuple[str, str]:
   lead = f"lead {radar.leadOne.dRel:.1f}m" if radar is not None and radar.leadOne.present else "no lead"
   plan = f"plan {model.position.x[-1]:.0f}m" if model is not None and len(model.position.x) else "plan --"
   if ss is not None and ss.enabled:
-    mode = "op long, experimental" if ss.experimentalMode else "op long"
+    mode = "op long, experimental" if ss.deprecated.experimentalMode else "op long"
   else:
     mode = "driver long"
   return f"{t - t0:.1f}s  {v}  {accel}", f"{lead}  {plan}  {mode}"

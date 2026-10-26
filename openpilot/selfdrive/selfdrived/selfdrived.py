@@ -553,7 +553,8 @@ class SelfdriveD:
     ss.active = self.active
     ss.state = self.state_machine.state
     ss.engageable = not self.events.contains(ET.NO_ENTRY)
-    ss.experimentalMode = self.CP.openpilotLongitudinalControl
+    # deprecated upstream; still written for the op_mads log tools (op long always runs the e2e planner)
+    ss.deprecated.experimentalMode = self.CP.openpilotLongitudinalControl
     ss.personality = self.personality
 
     ss.alertText1 = self.AM.current_alert.alert_text_1

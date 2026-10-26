@@ -256,6 +256,13 @@ class TestMadsIntegration(OpenpilotTestCase):
     # controlsd polls on selfdriveState, so selfdriveStateSP must already be out when it wakes
     assert src.index("self.pm.send('selfdriveStateSP'") < src.index("self.pm.send('selfdriveState'")
 
+  def test_selfdrived_keeps_logging_experimental_mode(self):
+    import inspect
+    from openpilot.selfdrive.selfdrived import selfdrived
+    src = inspect.getsource(selfdrived.SelfdriveD.publish_selfdriveState)
+    # upstream deprecated the field; the op_mads log tools still read it, so new logs match the older ones
+    assert "ss.deprecated.experimentalMode = self.CP.openpilotLongitudinalControl" in src
+
   def test_big_model_failure_treats_mads_like_enabled(self):
     # A behavioral test would need a full SelfdriveD (SubMaster, Params, CarParams); assert the condition text instead.
     import inspect

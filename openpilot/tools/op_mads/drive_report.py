@@ -243,7 +243,7 @@ def curve_report(msgs) -> list[dict]:
       "v_min_kph": min(v for t, v in speed if t0 <= t <= t1) * MS_TO_KPH,
       "model_accel_min": min(accel) if accel else None,
       "engaged": bool(s is not None and s.enabled),
-      "experimental": bool(s is not None and s.experimentalMode),
+      "experimental": bool(s is not None and s.deprecated.experimentalMode),
       "source": str(plan.longitudinalPlanSource) if plan is not None else None,
     })
   return curves
@@ -390,7 +390,7 @@ def phantom_brake_report(msgs) -> list[dict]:
       kind = "unexplained"
     out.append({"t": a, "duration": b - a, "v_kph": v * MS_TO_KPH, "accel_min": min(_window(accel, a, b + 0.01)),
                 "kind": kind, "lead_d": lead_d, "plan_x": plan_x, "ay_ahead": ay_ahead,
-                "source": source, "experimental": bool(s is not None and s.experimentalMode)})
+                "source": source, "experimental": bool(s is not None and s.deprecated.experimentalMode)})
   return out
 
 
