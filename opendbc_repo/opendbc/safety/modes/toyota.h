@@ -62,6 +62,7 @@ static bool toyota_secoc = false;
 static bool toyota_alt_brake = false;
 static bool toyota_stock_longitudinal = false;
 static bool toyota_lta = false;
+static bool toyota_eps_probe = false;  // closed-area EPS tests: LKA torque limit 3000, debug builds only
 static int toyota_dbc_eps_torque_factor = 100;   // conversion factor for STEER_TORQUE_EPS in %: see dbc file
 
 static uint32_t toyota_compute_checksum(const CANPacket_t *msg) {
@@ -207,7 +208,7 @@ static bool toyota_tx_hook(const CANPacket_t *msg) {
   const int toyota_max_rate_up = ROUND(safety_interpolate(TOYOTA_RATE_UP_LOOKUP, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.));
 
   const TorqueSteeringLimits TOYOTA_TORQUE_STEERING_LIMITS = {
-    .max_torque = 1500,
+    .max_torque = toyota_eps_probe ? 3000 : 1500,
     .max_rate_up = toyota_max_rate_up,     // ramp up slow (stock 15)
     .max_rate_down = 25,                   // ramp down fast
     .max_torque_error = 350,               // max torque cmd in excess of motor torque
@@ -409,9 +410,12 @@ static safety_config toyota_init(uint16_t param) {
   const uint32_t TOYOTA_PARAM_STOCK_LONGITUDINAL = 2UL << TOYOTA_PARAM_OFFSET;
   const uint32_t TOYOTA_PARAM_LTA = 4UL << TOYOTA_PARAM_OFFSET;
 
+  toyota_eps_probe = false;
 #ifdef ALLOW_DEBUG
   const uint32_t TOYOTA_PARAM_SECOC = 8UL << TOYOTA_PARAM_OFFSET;
+  const uint32_t TOYOTA_PARAM_EPS_PROBE = 16UL << TOYOTA_PARAM_OFFSET;
   toyota_secoc = GET_FLAG(param, TOYOTA_PARAM_SECOC);
+  toyota_eps_probe = GET_FLAG(param, TOYOTA_PARAM_EPS_PROBE);
 #endif
 
   toyota_alt_brake = GET_FLAG(param, TOYOTA_PARAM_ALT_BRAKE);

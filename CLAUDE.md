@@ -46,6 +46,45 @@ ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/
 After each reboot: `ssh comma_4 'grep -h "firmware out of date\|done flashing panda" /data/log/swaglog.* | tail -3'`
 (the version string stays `DEV-6f4c0faf-DEBUG`; pandad's post-flash signature check failing would stop pandad).
 
+## Test branch op-chestnut-mads-eps-probe: closed areas only
+
+This branch is `op-chestnut-mads` (`c4eedce50a`) plus an EPS probe: in joystick debug mode the Toyota LKA torque limit is
+3000 instead of 1500, in the car controller and in the panda (`ToyotaFlags.EPS_PROBE` / `ToyotaSafetyFlags.EPS_PROBE`,
+set together by `opendbc/car/toyota/eps_probe.py` from card at init; the panda reads its flag only in debug builds).
+Design and plan: `docs/superpowers/specs/2026-10-26-toyota-eps-above-1500-probe-design.md`,
+`docs/superpowers/plans/2026-10-26-toyota-eps-probe.md`.
+
+- Normal driving on this branch is unchanged: without `JoystickDebugMode` the limit is 1500 everywhere.
+- In a probe drive `controlsd` never steers, `joystickd` follows MADS lateral (ACC main is enough; no standstill check),
+  and `openpilot/tools/op_mads/eps_probe.py` is the only `testJoystick` publisher. Its `--help` is the in-car procedure.
+- Never change `JoystickDebugMode` while onroad. It clears itself on the onroad-to-offroad transition.
+- The firmware keeps the version string `DEV-6f4c0faf-DEBUG` (it comes from the build copy's git HEAD), so after the
+  reboot that follows a switch, check that pandad flashed: swaglog shows `panda firmware out of date` and
+  `done flashing panda` once each. If the panda still blocks torque above 1500, `eps_probe.py` aborts with
+  "panda blocked steering" instead of reporting an EPS fault.
+- Run `eps_probe.py` inside `tmux` (a dropped SSH session does not stop it; SIGHUP and SIGTERM stop it cleanly). To stop
+  a run at once without SSH: ACC main off (MADS drops lateral) or hold the wheel (driver steering aborts it).
+- Pre-flight at home after the switch: `eps_probe.py --stage 1` on a normal drive must print "probe mode is not active"
+  (this checks the imports and params on the device; `--dry-run` imports nothing). Passed on 2026-10-26 at `ebeda7b`.
+- Run device commands in a login shell: an interactive `ssh comma_4` is one; for `ssh comma_4 '<cmd>'` use
+  `bash -lc "<cmd>"`, otherwise `python3` is `/usr/bin/python3` without capnp.
+
+Switch the device to the probe (offroad; push and reboot only with the user's approval):
+
+```bash
+git push fork op-chestnut-mads-eps-probe
+ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/dev/null)" != 1; git checkout -q -- panda/board/obj/gitversion.h panda/board/obj/version; git fetch -q origin op-chestnut-mads-eps-probe; git checkout -q -B op-chestnut-mads-eps-probe FETCH_HEAD; git log --oneline -1'
+```
+
+Back to the normal build (offroad, then reboot; pandad flashes the normal firmware back):
+
+```bash
+ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/dev/null)" != 1; git checkout -q -- panda/board/obj/gitversion.h panda/board/obj/version; git checkout -q op-chestnut-mads; git log --oneline -1'
+```
+
+After each reboot: `ssh comma_4 'grep -h "firmware out of date\|done flashing panda" /data/log/swaglog.* | tail -3'`.
+After the test: pull the route with `pull_route.sh` and copy `/data/eps_probe/` from the device.
+
 ## What this branch adds
 
 Most features are ported from sunnypilot (MIT; keep a local checkout to compare against) and hard-coded for this car.

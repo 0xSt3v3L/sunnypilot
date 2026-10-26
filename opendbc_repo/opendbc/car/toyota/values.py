@@ -15,6 +15,10 @@ MIN_ACC_SPEED = 19. * CV.MPH_TO_MS
 PEDAL_TRANSITION = 10. * CV.MPH_TO_MS
 
 
+# LKA torque limit in EPS probe mode (closed-area tests of the EPS above 1500, see eps_probe.py)
+EPS_PROBE_STEER_MAX = 3000
+
+
 class CarControllerParams:
   STEER_STEP = 1
   STEER_MAX = 1500
@@ -36,6 +40,9 @@ class CarControllerParams:
   MAX_LTA_DRIVER_TORQUE_ALLOWANCE = 150  # slightly above steering pressed allows some resistance when changing lanes
 
   def __init__(self, CP):
+    if CP.flags & ToyotaFlags.EPS_PROBE:
+      self.STEER_MAX = EPS_PROBE_STEER_MAX
+
     if CP.flags & ToyotaFlags.RAISED_ACCEL_LIMIT:
       self.ACCEL_MAX = 2.0
     else:
@@ -56,6 +63,7 @@ class ToyotaSafetyFlags(IntFlag):
   STOCK_LONGITUDINAL = (2 << 8)
   LTA = (4 << 8)
   SECOC = (8 << 8)
+  EPS_PROBE = (16 << 8)  # debug panda builds only
 
 
 class ToyotaFlags(IntFlag):
@@ -74,6 +82,8 @@ class ToyotaFlags(IntFlag):
   # these cars can utilize 2.0 m/s^2
   RAISED_ACCEL_LIMIT = 1024
   SECOC = 2048
+  # set at init in joystick debug mode only: raises the LKA torque limit for EPS tests
+  EPS_PROBE = 4096
 
   # deprecated flags
   # these cars are speculated to allow stop and go when the DSU is unplugged
