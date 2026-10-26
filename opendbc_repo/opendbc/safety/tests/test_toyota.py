@@ -213,10 +213,11 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
 
 class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSafetyTest, common.SteerRequestCutSafetyTest):
 
-  MAX_RATE_UP = 15
+  # op-chestnut-mads: 24 per frame up to 30 km/h (the common tests run at speed 0), stock 15 from 40 km/h
+  MAX_RATE_UP = 24
   MAX_RATE_DOWN = 25
   MAX_TORQUE_LOOKUP = [0], [1500]
-  MAX_RT_DELTA = 450
+  MAX_RT_DELTA = 720
   MAX_TORQUE_ERROR = 350
   TORQUE_MEAS_TOLERANCE = 1  # toyota safety adds one to be conservative for rounding
 
@@ -227,6 +228,27 @@ class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSaf
   @property
   def SAFETY_PARAM(self):
     return self.EPS_SCALE
+
+  def test_rate_up_by_speed(self):
+    # the safety reads speed 1 m/s low, so the low-speed rate lasts to 30 km/h + 1 m/s
+    self.safety.set_controls_allowed(True)
+    for speed, rate in ((0., 24), (30 / 3.6 + 1., 24), (40 / 3.6 + 1., 15), (25., 15)):
+      self._reset_speed_measurement(speed)
+      self._set_prev_torque(0)
+      self.assertTrue(self._tx(self._torque_cmd_msg(rate)), speed)
+      self._set_prev_torque(0)
+      self.assertFalse(self._tx(self._torque_cmd_msg(rate + 1)), speed)
+
+  def test_realtime_limit_by_speed(self):
+    # 30 frames of the rate: 720 at low speed, the stock 450 at high speed
+    self.safety.set_controls_allowed(True)
+    for speed, rt_delta in ((0., 720), (25., 450)):
+      self._reset_speed_measurement(speed)
+      self.safety.set_rt_torque_last(0)
+      self.safety.set_desired_torque_last(rt_delta - 10)
+      self._rx(self._torque_meas_msg(rt_delta))
+      self.assertTrue(self._tx(self._torque_cmd_msg(rt_delta)), speed)
+      self.assertFalse(self._tx(self._torque_cmd_msg(rt_delta + 10)), speed)
 
 
 class TestToyotaMadsSafety(TestToyotaSafetyTorque):

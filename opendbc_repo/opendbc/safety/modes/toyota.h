@@ -198,12 +198,20 @@ static void toyota_rx_hook(const CANPacket_t *msg) {
 }
 
 static bool toyota_tx_hook(const CANPacket_t *msg) {
+  // op-chestnut-mads: the torque ramps up 24 per frame up to 30 km/h and the stock 15 from 40 km/h, the same curve as
+  // the car controller. The speed is read 1 m/s low, like the other speed-dependent limits, to tolerate rounding.
+  const struct lookup_t TOYOTA_RATE_UP_LOOKUP = {
+    {8.333333, 11.111111, 11.111111},
+    {24., 15., 15.},
+  };
+  const int toyota_max_rate_up = ROUND(safety_interpolate(TOYOTA_RATE_UP_LOOKUP, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.));
+
   const TorqueSteeringLimits TOYOTA_TORQUE_STEERING_LIMITS = {
     .max_torque = 1500,
-    .max_rate_up = 15,          // ramp up slow
-    .max_rate_down = 25,        // ramp down fast
-    .max_torque_error = 350,    // max torque cmd in excess of motor torque
-    .max_rt_delta = 450,        // the real time limit is 1800/sec, a 20% buffer
+    .max_rate_up = toyota_max_rate_up,     // ramp up slow (stock 15)
+    .max_rate_down = 25,                   // ramp down fast
+    .max_torque_error = 350,               // max torque cmd in excess of motor torque
+    .max_rt_delta = toyota_max_rate_up * 30,  // 25 frames of max_rate_up in 250 ms plus a 20% buffer (stock 450)
     .type = TorqueMotorLimited,
 
     // the EPS faults when the steering angle rate is above a certain threshold for too long. to prevent this,
