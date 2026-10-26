@@ -16,6 +16,36 @@ Check `git_src_commit` of the build: master moves ahead of it (AGNOS 20.1 and la
 experimental (e2e) planner; `selfdriveState.experimentalMode` is deprecated upstream, but selfdrived still writes
 `deprecated.experimentalMode` for the log tools.
 
+## Validation branch op-chestnut-mads-rate24: closed areas first
+
+`op-chestnut-mads` (`fbacb5398c`) plus a faster LKA torque ramp at low speed: 24 per frame up to 30 km/h, the stock 15 from
+40 km/h (`low_speed_steer_delta_up` in the Toyota car controller; the panda safety allows the same curve read 1 m/s low,
+with the real-time limit at 30 frames of the rate: 720 / 450). 24, not 25, keeps the 0.5 s jerk within the ISO 11270
+limit of `test_lateral_limits`. It cannot help above 1500: the EPS faults on any LKA command above 1500 (closed-area
+probe, route 000000d1, 2026-10-26). Merge into `op-chestnut-mads` only after the closed-area check passes and the user
+agrees.
+
+Closed-area check: low-speed turns at 10-25 km/h in an empty area with MADS, both directions, then the rlog must show
+the command rising 24 per frame below 30 km/h, no `steerFaultTemporary` / `LKA_STATE` fault, and `safetyTxBlocked`
+staying 0.
+
+Switch the device (offroad; push and reboot only with the user's approval). Run device commands in a login shell
+(`bash -lc`) when they need python:
+
+```bash
+git push fork op-chestnut-mads-rate24
+ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/dev/null)" != 1; git checkout -q -- panda/board/obj/gitversion.h panda/board/obj/version; git fetch -q origin op-chestnut-mads-rate24; git checkout -q -B op-chestnut-mads-rate24 FETCH_HEAD; git log --oneline -1'
+```
+
+Back to the normal build (offroad, then reboot; pandad flashes the normal firmware back):
+
+```bash
+ssh comma_4 'set -e; cd /data/openpilot; test "$(cat /data/params/d/IsOnroad 2>/dev/null)" != 1; git checkout -q -- panda/board/obj/gitversion.h panda/board/obj/version; git checkout -q op-chestnut-mads; git log --oneline -1'
+```
+
+After each reboot: `ssh comma_4 'grep -h "firmware out of date\|done flashing panda" /data/log/swaglog.* | tail -3'`
+(the version string stays `DEV-6f4c0faf-DEBUG`; pandad's post-flash signature check failing would stop pandad).
+
 ## What this branch adds
 
 Most features are ported from sunnypilot (MIT; keep a local checkout to compare against) and hard-coded for this car.
