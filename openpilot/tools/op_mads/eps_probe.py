@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""EPS probe: step the Toyota LKA torque command from 1500 to 3000 and record how the EPS answers. Closed areas only.
+"""EPS probe: step the Toyota LKA torque command and record how the EPS answers. Closed areas only.
+
+Two modes. Level mode (default) steps to 1500 and back; the EPS faults above 1500 (route 000000d1). Rate sweep (--sweep)
+ramps 0 -> 1500 -> 0 left and right and then +1500 -> -1500 at each rate under test (per 10 ms frame), to find the
+fastest up/down rate the EPS takes without a fault; it stops at the first fault. Probe mode allows up to 90 per frame.
 
 In the car (the drive to the venue runs normally: probe mode is off, the limit is 1500):
   1. Car off, device offroad: ssh in, echo -n 1 > /data/params/d/JoystickDebugMode
@@ -10,7 +14,10 @@ In the car (the drive to the venue runs normally: probe mode is off, the limit i
      Hands near (not on) the wheel, foot on the brake.
      To stop at once: Ctrl-C, or press ACC main off (MADS drops lateral, the panda revokes it), or hold the wheel
      (driver steering aborts the run and the car controller cuts torque).
-  4. The last line says what to do next: "stage 2: GO ...", "stage 2: NO ..." or "stage 2: UNDECIDED ...".
+     Rate sweep instead: python3 openpilot/tools/op_mads/eps_probe.py --stage 1 --sweep   (about 70 s)
+     It prints the rate the command reached and how fast the EPS followed for each step, and ends with the highest
+     rate without a fault.
+  4. Level mode: the last line says what to do next: "stage 2: GO ...", "stage 2: NO ..." or "stage 2: UNDECIDED ...".
      Stage 2, creeping at 1-3 km/h on the brake in a clear flat area, only on GO:
        python3 openpilot/tools/op_mads/eps_probe.py --stage 2
      A fault at 1500 needs the car off and on first, and JoystickDebugMode set again while offroad (it clears when the
@@ -30,7 +37,15 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_LEVELS = [1500, 1800, 2100, 2400, 2700, 3000]
+DEFAULT_LEVELS = [1500]
+DEFAULT_RATES = [30, 45, 60, 75, 90]
+RATE_MAX = 90  # per frame, the probe-mode limit of the car controller and the panda (EPS_PROBE_RATE_MAX)
+LEVEL_RATE = 24  # level mode ramps like rate24 at low speed
+SWEEP_LEVEL = 1500
+SWEEP_SETTLE_S = 0.3
+SWEEP_HOLD_S = 1.0
+SWEEP_REST_S = 1.5
+SWEEP_FINAL_REST_S = 2.0
 HOLD_S = 1.5
 REST_S = 2.5
 RAMP_PER_S = 1500.  # the car controller ramps 15 per 10 ms frame
@@ -57,6 +72,7 @@ class Step:
   direction: str  # "left", "right" or "rest"
   duration: float  # s
   hold_s: float  # s at the end of the step that count for the verdict
+  rate: int = 0  # per frame the car controller ramps at (rate sweep, sent on joystick axis 2); 0 = LEVEL_RATE
 
 
 def build_schedule(levels: list[int], hold_s: float = HOLD_S, rest_s: float = REST_S) -> list[Step]:
@@ -66,6 +82,77 @@ def build_schedule(levels: list[int], hold_s: float = HOLD_S, rest_s: float = RE
       steps.append(Step(level, sign * level, direction, level / RAMP_PER_S + SETTLE_S + hold_s, hold_s))
       steps.append(Step(level, 0, "rest", rest_s, 0.))
   return steps
+
+
+def build_sweep(rates: list[int]) -> list[Step]:
+  """Per rate: left 0 -> 1500 -> 0, right 0 -> -1500 -> 0, then +1500 -> -1500 (reversal) -> 0."""
+  steps = []
+  ramp = SWEEP_LEVEL / 100.  # 1500 in frames-per-unit-rate: duration of a 0 <-> 1500 ramp is ramp / rate s
+  for r in rates:
+    steps += [
+      Step(SWEEP_LEVEL, SWEEP_LEVEL, "left", ramp / r + SWEEP_SETTLE_S + SWEEP_HOLD_S, SWEEP_HOLD_S, r),
+      Step(SWEEP_LEVEL, 0, "rest", ramp / r + SWEEP_REST_S, 0., r),
+      Step(SWEEP_LEVEL, -SWEEP_LEVEL, "right", ramp / r + SWEEP_SETTLE_S + SWEEP_HOLD_S, SWEEP_HOLD_S, r),
+      Step(SWEEP_LEVEL, 0, "rest", ramp / r + SWEEP_REST_S, 0., r),
+      Step(SWEEP_LEVEL, SWEEP_LEVEL, "left", ramp / r + SWEEP_SETTLE_S + SWEEP_HOLD_S, SWEEP_HOLD_S, r),
+      Step(SWEEP_LEVEL, -SWEEP_LEVEL, "reverse", 2 * ramp / r + SWEEP_SETTLE_S + SWEEP_HOLD_S, SWEEP_HOLD_S, r),
+      Step(SWEEP_LEVEL, 0, "rest", ramp / r + SWEEP_FINAL_REST_S, 0., r),
+    ]
+  return steps
+
+
+def joystick_axes(target: float, rate: int) -> list[float]:
+  """testJoystick axes: 0 accel (unused), 1 torque as a fraction of 1500, 2 the ramp rate card applies in probe mode."""
+  return [0., target / SWEEP_LEVEL, float(rate if rate > 0 else LEVEL_RATE)]
+
+
+def transition_rate(cmds: list[float], start: float, end: float) -> float:
+  """Units per frame the command covered between 10% and 90% of a start -> end change (100 Hz samples)."""
+  span = end - start
+  progress = [(c - start) / span for c in cmds]
+
+  def crossing(level: float) -> float | None:
+    i = next((i for i, p in enumerate(progress) if p >= level), None)
+    if i is None or i == 0:
+      return None if i is None else 0.
+    return i - 1 + (level - progress[i - 1]) / (progress[i] - progress[i - 1])  # linear between samples
+
+  t10, t90 = crossing(0.1), crossing(0.9)
+  if t10 is None or t90 is None or t90 <= t10:
+    return 0.
+  return 0.8 * abs(span) / (t90 - t10)
+
+
+def max_step(cmds: list[float]) -> float:
+  """Largest change between consecutive samples. Message timing can make one frame catch up (up to the 90 limit), so
+  the rlog's CAN commands are the exact record; this is the in-car approximation."""
+  return max((abs(b - a) for a, b in zip(cmds, cmds[1:], strict=False)), default=0.)
+
+
+def reach_time(values: list[float], threshold: float) -> float | None:
+  """Seconds (100 Hz samples) until values first reach threshold, in its direction."""
+  sign = 1 if threshold >= 0 else -1
+  i = next((i for i, v in enumerate(values) if v * sign >= threshold * sign), None)
+  return i * DT if i is not None else None
+
+
+def rates_from_args(rates: list[int] | None) -> list[int]:
+  out = rates if rates else DEFAULT_RATES
+  for r in out:
+    if not 0 < r <= RATE_MAX:
+      raise ValueError(f"rate {r} outside 1..{RATE_MAX}")
+  return out
+
+
+def sweep_summary(results: list[tuple[int, str]], abort: str | None) -> str:
+  passed = [r for r, v in results if v == "ACCEPT"]
+  faulted = [r for r, v in results if v == "FAULT"]
+  best = f"highest rate without a fault: {max(passed)}" if passed else ""
+  if faulted:
+    return f"{best} (faulted at {faulted[0]})" if passed else f"faulted at {faulted[0]}: no rate passed"
+  if abort is not None:
+    return f"stopped early ({abort}): {best or 'no rate finished'}"
+  return best
 
 
 def levels_from_args(levels: list[int] | None, max_level: int | None) -> list[int]:
@@ -175,7 +262,7 @@ class _Log:
     self.f.flush()
 
 
-def run(stage: int, levels: list[int]) -> int:
+def run(stage: int, steps: list[Step], sweep: bool = False) -> int:
   from openpilot.cereal import messaging
   from opendbc.car.structs import car
   from opendbc.car.toyota.eps_probe import EPS_PROBE_STEER_MAX
@@ -200,19 +287,19 @@ def run(stage: int, levels: list[int]) -> int:
   pm = messaging.PubMaster(['testJoystick'])
   rk = Ratekeeper(int(1 / DT), print_delay_threshold=None)
 
-  def publish(target: float) -> None:
+  def publish(target: float, rate: int = 0) -> None:
     msg = messaging.new_message('testJoystick')
-    msg.testJoystick.axes = [0., target / EPS_PROBE_STEER_MAX]
+    msg.testJoystick.axes = joystick_axes(target, rate)
     msg.testJoystick.buttons = [False]
     pm.send('testJoystick', msg)
 
   def tx_blocked() -> int:
     return sum(ps.safetyTxBlocked for ps in sm['pandaStates'])
 
-  steps = build_schedule(levels)
   results: list[tuple[int, str]] = []
   abort: str | None = None
-  log.write("start", stage=stage, levels=levels, steer_max=EPS_PROBE_STEER_MAX)
+  log.write("start", stage=stage, sweep=sweep, levels=sorted({s.level for s in steps}), rates=sorted({s.rate for s in steps}),
+            steer_max=EPS_PROBE_STEER_MAX)
   try:
     # joystickd needs testJoystick to keep lateral; wait for MADS lateral to come up
     waited = 0.
@@ -231,38 +318,60 @@ def run(stage: int, levels: list[int]) -> int:
 
     blocked_start = tx_blocked()
     lat_lost_s = 0.
-    applies = [s for s in steps if s.direction != "rest"]
-    for step in steps:
-      cmds, eps = [], []
+    n_applies = sum(s.direction != "rest" for s in steps)
+    n = 0
+    target_now = 0.  # the last target sent; the car controller ramps from it at step.rate
+    for k, step in enumerate(steps):
+      cmds, eps, all_cmds, all_eps = [], [], [], []
+      start_target = target_now
       frames = int(round(step.duration / DT))
       hold_from = frames - int(round(step.hold_s / DT))
-      log.write("step", level=step.level, target=step.target, direction=step.direction, duration=step.duration)
+      log.write("step", level=step.level, target=step.target, direction=step.direction, duration=step.duration, rate=step.rate)
       for i in range(frames):
-        publish(step.target)
+        target_now = float(step.target)
+        publish(target_now, step.rate)
         sm.update(0)
         cs = sm['carState']
         lat_lost_s = 0. if sm['carControl'].latActive else lat_lost_s + DT
         reason = abort_reason(cs, sm['carControl'].latActive, stage, lat_lost_s) or tx_blocked_reason(blocked_start, tx_blocked())
+        all_cmds.append(float(sm['carOutput'].actuatorsOutput.torqueOutputCan))
+        all_eps.append(float(cs.steeringTorqueEps))
         if step.direction != "rest" and i >= hold_from:
-          cmds.append(float(sm['carOutput'].actuatorsOutput.torqueOutputCan))
-          eps.append(float(cs.steeringTorqueEps))
+          cmds.append(all_cmds[-1])
+          eps.append(all_eps[-1])
         if reason is not None:
           abort = reason
           if cs.steerFaultTemporary or cs.steerFaultPermanent:
-            results.append((step.level, "FAULT"))
+            results.append((step.rate if sweep else step.level, "FAULT"))
             print(f"{step.direction:5s} {step.level}: FAULT")
             log.write("verdict", level=step.level, target=step.target, verdict="FAULT")
           print(f"ABORT: {reason} (level {step.level} {step.direction})")
           log.write("abort", reason=reason, level=step.level, target=step.target)
           return 1
         rk.keep_time()
-      if step.direction != "rest":
+      if sweep:
+        # how fast the command moved and how soon the EPS followed (2000 is ~1.4 x 1500; release: under 300)
+        achieved = transition_rate(all_cmds, start_target, step.target) if step.target != start_target else 0.
+        eps_t = reach_time(all_eps, 2000. if step.target > 0 else -2000. if step.target < 0 else 0.)
+        if step.target == 0:
+          eps_t = next((i * DT for i, e in enumerate(all_eps) if abs(e) < 300.), None)
+        verdict = level_verdict(step.target, cmds, eps, False) if step.direction != "rest" else "-"
+        eps_txt = f"{eps_t:4.2f} s" if eps_t is not None else "  -   "
+        jump = max_step(all_cmds)
+        print(f"rate {step.rate:2d} {step.direction:7s} -> {step.target:5d}: command {achieved:4.1f}/frame (max step {jump:3.0f}), " +
+              f"EPS there in {eps_txt} {verdict}")
+        log.write("sweep", rate=step.rate, direction=step.direction, target=step.target, achieved=achieved, max_step=jump,
+                  eps_t=eps_t, verdict=verdict)
+        last_of_rate = k + 1 == len(steps) or steps[k + 1].rate != step.rate
+        if last_of_rate:
+          results.append((step.rate, "ACCEPT"))
+      elif step.direction != "rest":
         verdict = level_verdict(step.target, cmds, eps, False)
         results.append((step.level, verdict))
         cmd = statistics.median(abs(c) for c in cmds) if cmds else 0.
         eps_med = statistics.median(abs(e) for e in eps) if eps else 0.
-        n = applies.index(step) + 1
-        print(f"{n:2d}/{len(applies)} {step.direction:5s} {step.level}: {verdict:11s} cmd {cmd:5.0f}  eps {eps_med:5.0f}")
+        n += 1
+        print(f"{n:2d}/{n_applies} {step.direction:5s} {step.level}: {verdict:11s} cmd {cmd:5.0f}  eps {eps_med:5.0f}")
         log.write("verdict", level=step.level, target=step.target, verdict=verdict, cmd=cmd, eps=eps_med)
     log.write("end")
     print("done")
@@ -276,7 +385,7 @@ def run(stage: int, levels: list[int]) -> int:
     for _ in range(30):
       publish(0.)
       time.sleep(DT)
-    decision = stage2_decision(stage, results, abort)
+    decision = sweep_summary(results, abort) if sweep else stage2_decision(stage, results, abort)
     if decision:
       print(decision)
       log.write("decision", decision=decision)
@@ -288,18 +397,25 @@ def main() -> int:
   parser.add_argument("--stage", type=int, choices=(1, 2), required=True, help="1: standstill, 2: creeping at 1-3 km/h")
   parser.add_argument("--levels", type=int, nargs="+", help="torque levels (default: %(default)s)")
   parser.add_argument("--max", type=int, dest="max_level", help="stop at this level")
+  parser.add_argument("--sweep", action="store_true", help="rate sweep instead of torque levels")
+  parser.add_argument("--rates", type=int, nargs="+", help=f"rates per frame for --sweep (default: {DEFAULT_RATES})")
   parser.add_argument("--dry-run", action="store_true", help="print the schedule and exit")
   args = parser.parse_args()
 
-  levels = levels_from_args(args.levels, args.max_level)
+  if args.sweep:
+    try:
+      steps = build_sweep(rates_from_args(args.rates))
+    except ValueError as e:
+      parser.error(str(e))
+  else:
+    steps = build_schedule(levels_from_args(args.levels, args.max_level))
   if args.dry_run:
-    steps = build_schedule(levels)
     for s in steps:
-      print(f"{s.direction:5s} target {s.target:6d}  {s.duration:4.2f} s")
+      print(f"{s.direction:7s} target {s.target:6d}  rate {s.rate:2d}  {s.duration:4.2f} s")
     print(f"total {sum(s.duration for s in steps):.1f} s, stage {args.stage}")
     return 0
   ensure_repo_on_path(sys.path)
-  return run(args.stage, levels)
+  return run(args.stage, steps, sweep=args.sweep)
 
 
 if __name__ == "__main__":

@@ -9,9 +9,10 @@ import signal
 import tempfile
 from pathlib import Path
 
-from openpilot.tools.op_mads.eps_probe import (DEFAULT_LEVELS, NO_LATERAL, abort_reason, acquire_lock, build_schedule,
-                                               install_signal_handlers, level_verdict, levels_from_args, probe_ready, stage2_decision,
-                                               tx_blocked_reason)
+from openpilot.tools.op_mads.eps_probe import (DEFAULT_LEVELS, DEFAULT_RATES, NO_LATERAL, abort_reason, acquire_lock,
+                                               build_schedule, build_sweep, install_signal_handlers, level_verdict, levels_from_args,
+                                               probe_ready, rates_from_args, stage2_decision, sweep_summary,
+                                               transition_rate, tx_blocked_reason)
 
 
 def corolla_ci():
@@ -25,18 +26,17 @@ def cs(**kw):
 
 class TestEpsProbeSchedule(OpenpilotTestCase):
   def test_default_schedule(self):
+    # the EPS faults above 1500 (route 000000d1): level mode only steps to 1500 now
+    assert DEFAULT_LEVELS == [1500]
     steps = build_schedule(DEFAULT_LEVELS)
-    assert len(steps) == 24
-    applies = [s for s in steps if s.direction != "rest"]
-    assert [s.target for s in applies] == [1500, -1500, 1800, -1800, 2100, -2100, 2400, -2400, 2700, -2700, 3000, -3000]
-    assert [s.direction for s in applies[:2]] == ["left", "right"]
-    assert all(s.target == 0 and s.duration == 2.5 for s in steps if s.direction == "rest")
+    assert [s.target for s in steps] == [1500, 0, -1500, 0]
+    assert [s.direction for s in steps] == ["left", "rest", "right", "rest"]
+    assert all(s.rate == 0 for s in steps)
     assert steps[0].duration == 1500 / 1500 + 0.5 + 1.5 and steps[0].hold_s == 1.5
-    assert abs(sum(s.duration for s in steps) - 72.) < 0.01
 
   def test_max_cuts_levels(self):
-    assert levels_from_args(None, 2100) == [1500, 1800, 2100]
-    assert levels_from_args([1500, 2000], None) == [1500, 2000]
+    assert levels_from_args(None, 1200) == []
+    assert levels_from_args([900, 1500], None) == [900, 1500]
     assert levels_from_args(None, None) == DEFAULT_LEVELS
 
 
@@ -131,3 +131,69 @@ class TestEpsProbeEntryPoint(OpenpilotTestCase):
     ensure_repo_on_path(path)
     ensure_repo_on_path(path)
     assert path == [str(REPO_ROOT), "/usr/lib/python3"]
+
+
+class TestEpsProbeRateSweep(OpenpilotTestCase):
+  def test_sweep_schedule(self):
+    steps = build_sweep([30, 90])
+    assert [s.direction for s in steps[:7]] == ["left", "rest", "right", "rest", "left", "reverse", "rest"]
+    assert [s.target for s in steps[:7]] == [1500, 0, -1500, 0, 1500, -1500, 0]
+    assert {s.rate for s in steps[:7]} == {30} and {s.rate for s in steps[7:]} == {90}
+    left, rest, _, _, _, reverse, last = steps[:7]
+    assert abs(left.duration - (0.5 + 0.3 + 1.0)) < 1e-9 and left.hold_s == 1.0
+    assert abs(rest.duration - (0.5 + 1.5)) < 1e-9 and rest.hold_s == 0.
+    assert abs(reverse.duration - (1.0 + 0.3 + 1.0)) < 1e-9 and reverse.hold_s == 1.0
+    assert abs(last.duration - (0.5 + 2.0)) < 1e-9
+    assert DEFAULT_RATES == [30, 45, 60, 75, 90]
+
+  def test_joystick_axes(self):
+    # the target jumps; the car controller ramps at the rate in axis 2 (card applies it in probe mode)
+    from openpilot.tools.op_mads.eps_probe import LEVEL_RATE, joystick_axes
+    assert joystick_axes(1500, 45) == [0., 1., 45.]
+    assert joystick_axes(-750, 90) == [0., -0.5, 90.]
+    assert joystick_axes(1500, 0) == [0., 1., float(LEVEL_RATE)] and LEVEL_RATE == 24
+
+  def test_transition_rate(self):
+    ramp = [float(min(45 * i, 1500)) for i in range(60)]
+    assert abs(transition_rate(ramp, 0, 1500) - 45.) < 1.
+    # message timing: some frames repeat, the next one catches up
+    jitter = [0., 90., 90., 180., 225., 225., 315., 360.] + [float(min(360 + 45 * i, 1500)) for i in range(1, 40)]
+    assert 38. < transition_rate(jitter, 0, 1500) < 48.
+    down = [float(max(1500 - 60 * i, -1500)) for i in range(70)]
+    assert abs(transition_rate(down, 1500, -1500) - 60.) < 1.
+    assert transition_rate([0.] * 50, 0, 1500) == 0.
+
+  def test_rates_from_args(self):
+    assert rates_from_args(None) == DEFAULT_RATES
+    assert rates_from_args([45, 60]) == [45, 60]
+    for bad in ([0], [91], [-30]):
+      try:
+        rates_from_args(bad)
+        raise AssertionError(bad)
+      except ValueError:
+        pass
+
+  def test_sweep_summary(self):
+    assert sweep_summary([(30, "ACCEPT"), (45, "ACCEPT"), (60, "FAULT")], None) == "highest rate without a fault: 45 (faulted at 60)"
+    assert sweep_summary([(r, "ACCEPT") for r in (30, 45, 60, 75, 90)], None) == "highest rate without a fault: 90"
+    assert sweep_summary([(30, "FAULT")], None) == "faulted at 30: no rate passed"
+    assert sweep_summary([(30, "ACCEPT")], "driver steering").startswith("stopped early (driver steering)")
+
+  def test_rate_max_matches_opendbc(self):
+    from opendbc.car.toyota.eps_probe import EPS_PROBE_RATE_MAX
+    from opendbc.car.toyota.eps_probe import EPS_PROBE_STEER_MAX
+    from openpilot.tools.op_mads.eps_probe import RATE_MAX, SWEEP_LEVEL
+    assert RATE_MAX == EPS_PROBE_RATE_MAX
+    assert SWEEP_LEVEL == EPS_PROBE_STEER_MAX  # joystick axis 1 is a fraction of the probe-mode STEER_MAX
+
+  def test_reach_time(self):
+    from openpilot.tools.op_mads.eps_probe import reach_time
+    assert reach_time([0., 900., 1800., 2100.], 2000.) == 0.03
+    assert reach_time([0., -900., -2100.], -2000.) == 0.02
+    assert reach_time([0., 900.], 2000.) is None
+
+  def test_max_step(self):
+    from openpilot.tools.op_mads.eps_probe import max_step
+    assert max_step([0., 45., 45., 135., 180.]) == 90.
+    assert max_step([1500., 1455., 1410.]) == 45.
+    assert max_step([0.]) == 0.

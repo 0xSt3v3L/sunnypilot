@@ -3,7 +3,7 @@ import unittest
 from opendbc.car import gen_empty_fingerprint, structs
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.hyundai.values import CAR as HYUNDAI
-from opendbc.car.toyota.eps_probe import EPS_PROBE_RATE_MAX, EPS_PROBE_STEER_MAX, eps_probe_active, with_eps_probe
+from opendbc.car.toyota.eps_probe import EPS_PROBE_RATE_MAX, EPS_PROBE_STEER_MAX, apply_probe_rate, eps_probe_active, with_eps_probe
 from opendbc.car.toyota.values import CAR, CarControllerParams, ToyotaFlags, ToyotaSafetyFlags
 
 
@@ -74,6 +74,18 @@ class TestEpsProbe(unittest.TestCase):
     CC = CC.as_reader()
     out, _ = probe.apply(CC, 30 * 10_000_000)
     self.assertEqual(out.torqueOutputCan, 1500 - 90)
+
+  def test_apply_probe_rate(self):
+    # the rate under test comes from testJoystick axis 2; the car controller then ramps exactly at it
+    probe = with_eps_probe(make_ci(CAR.TOYOTA_COROLLA_TSS2))
+    apply_probe_rate(probe.CC.params, [0., 1., 45.])
+    self.assertEqual((probe.CC.params.STEER_DELTA_UP, probe.CC.params.STEER_DELTA_DOWN), (45, 45))
+    self.assertEqual(final_torque(probe, frames=10), 450)
+    apply_probe_rate(probe.CC.params, [0., 1., 200.])
+    self.assertEqual(probe.CC.params.STEER_DELTA_UP, 90)
+    for axes in ([0., 1.], [0., 1., 0.], [0., 1., -5.]):
+      apply_probe_rate(probe.CC.params, axes)
+      self.assertEqual((probe.CC.params.STEER_DELTA_UP, probe.CC.params.STEER_DELTA_DOWN), (90, 90))
 
 
 if __name__ == "__main__":

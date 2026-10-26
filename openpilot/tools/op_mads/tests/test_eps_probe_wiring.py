@@ -34,3 +34,10 @@ class TestEpsProbeWiring(OpenpilotTestCase):
   def test_no_device_joystick_publisher(self):
     # eps_probe.py is the only testJoystick publisher on the device
     assert "joystick_control" not in source("system/manager/process_config.py")
+
+  def test_card_applies_probe_rate(self):
+    src = source("selfdrive/car/card.py")
+    assert "'testJoystick'" in src
+    m = re.search(r"if eps_probe_active\(self\.CP\):\n\s+apply_probe_rate\(self\.CI\.CC\.params, self\.sm\['testJoystick'\]\.axes\)", src)
+    assert m is not None
+    assert m.start() < src.index("self.CI.apply(CC, now_nanos)")
