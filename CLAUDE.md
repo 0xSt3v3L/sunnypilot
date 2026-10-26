@@ -16,6 +16,25 @@ Check `git_src_commit` of the build: master moves ahead of it (AGNOS 20.1 and la
 experimental (e2e) planner; `selfdriveState.experimentalMode` is deprecated upstream, but selfdrived still writes
 `deprecated.experimentalMode` for the log tools.
 
+## Test branch op-chestnut-mads-rate24-probe: closed areas only
+
+`op-chestnut-mads-rate24` merged with `op-chestnut-mads-eps-probe` (both described below), to check in a closed area
+whether the EPS follows the 24-per-frame ramp: `eps_probe.py` steps 0 -> 1500 and the car controller ramps at the low-speed
+rate. The question is whether the EPS has an internal LKA rate limit like the ~1500 units/s noted for LTA (that would
+make rate24 useless) and whether a faster ramp faults it.
+
+In the car (standstill is enough; stage 2 creeping is optional, real low-speed turns on rate24 cover motion later):
+1. Car off, device offroad: `echo -n 1 > /data/params/d/JoystickDebugMode`. Never change it while onroad.
+2. Car on (READY), ACC main on, D, foot on the brake, wheels straight.
+3. In tmux, three times: `cd /data/openpilot && python3 openpilot/tools/op_mads/eps_probe.py --stage 1 --levels 1500`.
+   Always pass `--levels 1500`: the default levels go up to 3000, and the EPS faults above 1500 (route 000000d1).
+   Expect ACCEPT left and right; ignore the "stage 2" line (it is written for the above-1500 test).
+4. Car off, then pull the route and `/data/eps_probe/`.
+
+Pass: below 30 km/h the CAN command rises 24 per frame, `steeringTorqueEps` keeps about 1.45 x the command during the
+ramp (it would fall behind if the EPS limited the rate to 15), no `LKA_STATE` / `steerFaultTemporary` fault, and
+`safetyTxBlocked` stays 0. Switch and revert like the branches below, with branch `op-chestnut-mads-rate24-probe`.
+
 ## Validation branch op-chestnut-mads-rate24: closed areas first
 
 `op-chestnut-mads` (`fbacb5398c`) plus a faster LKA torque ramp at low speed: 24 per frame up to 30 km/h, the stock 15 from
