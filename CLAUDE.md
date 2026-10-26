@@ -16,6 +16,18 @@ Check `git_src_commit` of the build: master moves ahead of it (AGNOS 20.1 and la
 experimental (e2e) planner; `selfdriveState.experimentalMode` is deprecated upstream, but selfdrived still writes
 `deprecated.experimentalMode` for the log tools.
 
+## Validation branch op-chestnut-mads-rate30: the final low-speed ramp
+
+`op-chestnut-mads-rate24` with the curve set from the rate sweep (route 000000e6: the EPS output follows the command up
+to about 30 per frame; 45 is no faster, 60 faults). Toyota car controller (`low_speed_steer_deltas`): up 30 per frame
+to 20 km/h, 24 at 30 km/h, the stock 15 from 40 km/h; down (release) 30 to 20 km/h, the stock 25 from 30 km/h. Panda:
+the same up curve read 1 m/s low, real-time limit 30 frames of the up rate (900 / 450); `max_rate_down` stays 25,
+because with `TorqueMotorLimited` it is the least a command above EPS + 350 must drop per frame, not a cap. The user
+chose function over the ISO 11270 jerk check below 30 km/h and to design for OEM wheels (the car has ET35 for now).
+The sweep was at standstill only: on the road, check for steer faults and whether the 7-22 km/h wheel swing grew.
+Switch and revert like the branches below, with branch `op-chestnut-mads-rate30`; merge into `op-chestnut-mads` only
+after the road test and the user's go-ahead.
+
 ## Validation branch op-chestnut-mads-rate24: closed areas first
 
 `op-chestnut-mads` (`fbacb5398c`) plus a faster LKA torque ramp at low speed: 24 per frame up to 30 km/h, the stock 15 from
