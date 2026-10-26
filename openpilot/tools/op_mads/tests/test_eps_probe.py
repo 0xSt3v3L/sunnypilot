@@ -119,3 +119,15 @@ class TestEpsProbeReviewFixes(OpenpilotTestCase):
     assert stage2_decision(1, [(1500, "ACCEPT")], "driver steering").startswith("stage 2: UNDECIDED")
     assert stage2_decision(1, [(1500, "ACCEPT")], tx_blocked_reason(0, 1)).startswith("stage 2: UNDECIDED")
     assert stage2_decision(2, accept, None) == ""
+
+
+
+class TestEpsProbeEntryPoint(OpenpilotTestCase):
+  def test_repo_root_on_path(self):
+    # on the device an SSH shell has no PYTHONPATH (manager gets /data/openpilot from launch_chffrplus.sh)
+    from openpilot.tools.op_mads.eps_probe import REPO_ROOT, ensure_repo_on_path
+    assert (REPO_ROOT / "openpilot" / "tools" / "op_mads" / "eps_probe.py").is_file()
+    path: list[str] = ["/usr/lib/python3"]
+    ensure_repo_on_path(path)
+    ensure_repo_on_path(path)
+    assert path == [str(REPO_ROOT), "/usr/lib/python3"]

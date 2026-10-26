@@ -45,6 +45,7 @@ ACCEPT_RATIO = 1.2
 TARGET_TOLERANCE = 100.
 NO_RESPONSE_EPS = 100.
 LOG_DIR = Path("/data/eps_probe")
+REPO_ROOT = Path(__file__).resolve().parents[3]
 NO_LATERAL = "no lateral at this speed"
 PANDA_BLOCKED = "panda blocked steering: firmware without probe support, not an EPS result"
 
@@ -150,6 +151,12 @@ def stage2_decision(stage: int, results: list[tuple[int, str]], abort: str | Non
     top = max(lv for lv, v in results if v == "ACCEPT")
     return f"stage 2: NO (result: the EPS clips above {top}); stop, analyze at home"
   return "stage 2: UNDECIDED, stop: mixed results, analyze at home"
+
+
+def ensure_repo_on_path(path: list[str]) -> None:
+  """An SSH shell on the device has no PYTHONPATH (manager gets /data/openpilot from launch_chffrplus.sh)."""
+  if str(REPO_ROOT) not in path:
+    path.insert(0, str(REPO_ROOT))
 
 
 def probe_ready(CP) -> bool:
@@ -291,6 +298,7 @@ def main() -> int:
       print(f"{s.direction:5s} target {s.target:6d}  {s.duration:4.2f} s")
     print(f"total {sum(s.duration for s in steps):.1f} s, stage {args.stage}")
     return 0
+  ensure_repo_on_path(sys.path)
   return run(args.stage, levels)
 
 
