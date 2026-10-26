@@ -16,6 +16,28 @@ Check `git_src_commit` of the build: master moves ahead of it (AGNOS 20.1 and la
 experimental (e2e) planner; `selfdriveState.experimentalMode` is deprecated upstream, but selfdrived still writes
 `deprecated.experimentalMode` for the log tools.
 
+## Test branch op-chestnut-mads-ratesweep-probe: closed areas only
+
+`op-chestnut-mads-rate24-probe` with the probe turned into a rate sweep, to find the fastest up/down rate the EPS takes
+(the user chose function over the ISO jerk limit for the low-speed ramp, 2026-10-26). In probe mode the torque stays at
+1500 (the EPS faults above it) and the car controller and panda allow up to 90 per frame up and down at any speed;
+`eps_probe.py --sweep` sends the rate under test on joystick axis 2 and card sets it as the controller's limit, so the
+CAN command ramps at exactly that rate. Normal driving on this branch is rate24.
+
+In the car (standstill):
+1. Car off, device offroad: `echo -n 1 > /data/params/d/JoystickDebugMode`. Never change it while onroad.
+2. Car on (READY), ACC main on, D, foot on the brake, wheels straight.
+3. In tmux: `cd /data/openpilot && python3 openpilot/tools/op_mads/eps_probe.py --stage 1 --sweep` (about 63 s:
+   30, 45, 60, 75, 90 per frame; each left and right 0 -> 1500 -> 0, then +1500 -> -1500 -> 0). It stops at the first
+   fault and prints the highest rate without one. "max step" in the output is approximate (message timing); the rlog
+   has the exact CAN commands. A fault clears with the car off and on; set the param again while offroad before rerunning.
+4. Car off, then pull the route and `/data/eps_probe/`.
+
+Read from the rlog per rate: CAN command steps (should equal the rate), time for `steeringTorqueEps` to reach 2000 and
+to release, `LKA_STATE` (25 then 9 = fault), `safetyTxBlocked` 0. Pick the highest rate with no fault where the EPS
+still gets there faster; the final curve uses it below ~15 km/h, 24 at 30 km/h and the stock 15 from 40 km/h, and the
+down rate = the up rate (at least 25, never above what passed here).
+
 ## Test branch op-chestnut-mads-rate24-probe: closed areas only
 
 `op-chestnut-mads-rate24` merged with `op-chestnut-mads-eps-probe` (both described below), to check in a closed area
