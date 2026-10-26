@@ -29,16 +29,21 @@ MAX_PITCH_COMPENSATION = 1.5  # m/s^2
 MAX_STEER_RATE = 100  # deg/s
 MAX_STEER_RATE_FRAMES = 17  # tx control frames needed before torque can be cut
 
-# op-chestnut-mads: below 30 km/h the LKA torque ramps up LOW_SPEED_STEER_DELTA_UP per frame (1500 in 0.63 s instead of
-# 1 s, for intersection turns), back to the stock rate by 40 km/h. 24 keeps the 0.5 s jerk within the ISO 11270 limit
-# that test_lateral_limits checks (25 would not). The panda safety allows the same curve, read 1 m/s low.
-LOW_SPEED_STEER_DELTA_UP = 24
-LOW_SPEED_STEER_DELTA_UP_BP = [30. / 3.6, 40. / 3.6]  # m/s
+# op-chestnut-mads: up to 20 km/h the LKA torque ramps up and down LOW_SPEED_STEER_DELTA per frame (1500 in 0.5 s
+# instead of 1 s, for intersection turns). Up: 24 at 30 km/h, the stock rate from 40 km/h; down: the stock rate from
+# 30 km/h. 30 is as fast as the EPS output follows (rate sweep at standstill, route 000000e6: 45 is no faster, 60 faults).
+# This exceeds the ISO 11270 jerk check below 30 km/h by choice (the user prefers function). The panda safety allows the
+# same curves, read 1 m/s low.
+LOW_SPEED_STEER_DELTA = 30
+LOW_SPEED_STEER_DELTA_UP_BP = ([20. / 3.6, 30. / 3.6, 40. / 3.6], [LOW_SPEED_STEER_DELTA, 24])  # m/s; the stock rate appended
+LOW_SPEED_STEER_DELTA_DOWN_BP = ([20. / 3.6, 30. / 3.6], [LOW_SPEED_STEER_DELTA])
 
 
-def low_speed_steer_delta_up(v_ego: float, stock: int) -> int:
+def low_speed_steer_deltas(v_ego: float, stock_up: int, stock_down: int) -> tuple[int, int]:
   # floor: never above what the panda allows at the same speed
-  return int(np.interp(v_ego, LOW_SPEED_STEER_DELTA_UP_BP, [LOW_SPEED_STEER_DELTA_UP, stock]))
+  up = int(np.interp(v_ego, LOW_SPEED_STEER_DELTA_UP_BP[0], [*LOW_SPEED_STEER_DELTA_UP_BP[1], stock_up]))
+  down = int(np.interp(v_ego, LOW_SPEED_STEER_DELTA_DOWN_BP[0], [*LOW_SPEED_STEER_DELTA_DOWN_BP[1], stock_down]))
+  return up, down
 
 # EPS allows user torque above threshold for 50 frames before permanently faulting
 MAX_USER_TORQUE = 500
@@ -61,7 +66,7 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     super().__init__(dbc_names, CP)
     self.params = CarControllerParams(self.CP)
-    self.stock_steer_delta_up = self.params.STEER_DELTA_UP
+    self.stock_steer_deltas = (self.params.STEER_DELTA_UP, self.params.STEER_DELTA_DOWN)
     self.last_torque = 0
     self.last_angle = 0
     self.alert_active = False
@@ -115,7 +120,7 @@ class CarController(CarControllerBase):
 
     # *** steer torque ***
     new_torque = int(round(actuators.torque * self.params.STEER_MAX))
-    self.params.STEER_DELTA_UP = low_speed_steer_delta_up(CS.out.vEgoRaw, self.stock_steer_delta_up)
+    self.params.STEER_DELTA_UP, self.params.STEER_DELTA_DOWN = low_speed_steer_deltas(CS.out.vEgoRaw, *self.stock_steer_deltas)
     apply_torque = apply_meas_steer_torque_limits(new_torque, self.last_torque, CS.out.steeringTorqueEps, self.params)
 
     # >100 degree/sec steering fault prevention

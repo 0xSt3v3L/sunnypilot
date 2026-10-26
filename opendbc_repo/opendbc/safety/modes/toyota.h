@@ -198,11 +198,13 @@ static void toyota_rx_hook(const CANPacket_t *msg) {
 }
 
 static bool toyota_tx_hook(const CANPacket_t *msg) {
-  // op-chestnut-mads: the torque ramps up 24 per frame up to 30 km/h and the stock 15 from 40 km/h, the same curve as
-  // the car controller. The speed is read 1 m/s low, like the other speed-dependent limits, to tolerate rounding.
+  // op-chestnut-mads: the torque ramps up 30 per frame up to 20 km/h, 24 at 30 km/h and the stock 15 from 40 km/h, the
+  // same curve as the car controller. The speed is read 1 m/s low, like the other speed-dependent limits, to tolerate
+  // rounding. max_rate_down stays 25: with TorqueMotorLimited it is the least a command above the EPS torque + 350 must
+  // drop per frame, not a cap, so the car controller's faster low-speed release (30) always satisfies it.
   const struct lookup_t TOYOTA_RATE_UP_LOOKUP = {
-    {8.333333, 11.111111, 11.111111},
-    {24., 15., 15.},
+    {5.555556, 8.333333, 11.111111},
+    {30., 24., 15.},
   };
   const int toyota_max_rate_up = ROUND(safety_interpolate(TOYOTA_RATE_UP_LOOKUP, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.));
 

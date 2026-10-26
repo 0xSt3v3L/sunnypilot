@@ -213,11 +213,12 @@ class TestToyotaSafetyBase(common.CarSafetyTest, common.LongitudinalAccelSafetyT
 
 class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSafetyTest, common.SteerRequestCutSafetyTest):
 
-  # op-chestnut-mads: 24 per frame up to 30 km/h (the common tests run at speed 0), stock 15 from 40 km/h
-  MAX_RATE_UP = 24
-  MAX_RATE_DOWN = 25
+  # op-chestnut-mads: up 30 per frame to 20 km/h (the common tests run at speed 0), 24 at 30 km/h, the stock 15 from
+  # 40 km/h; the car controller also releases at 30 below 20 km/h, which the safety allows (it does not cap drops)
+  MAX_RATE_UP = 30
+  MAX_RATE_DOWN = 25  # with TorqueMotorLimited: the least drop per frame above the EPS torque + 350, not a cap
   MAX_TORQUE_LOOKUP = [0], [1500]
-  MAX_RT_DELTA = 720
+  MAX_RT_DELTA = 900
   MAX_TORQUE_ERROR = 350
   TORQUE_MEAS_TOLERANCE = 1  # toyota safety adds one to be conservative for rounding
 
@@ -230,19 +231,28 @@ class TestToyotaSafetyTorque(TestToyotaSafetyBase, common.MotorTorqueSteeringSaf
     return self.EPS_SCALE
 
   def test_rate_up_by_speed(self):
-    # the safety reads speed 1 m/s low, so the low-speed rate lasts to 30 km/h + 1 m/s
+    # the safety reads speed 1 m/s low, so each rate lasts to its breakpoint + 1 m/s
     self.safety.set_controls_allowed(True)
-    for speed, rate in ((0., 24), (30 / 3.6 + 1., 24), (40 / 3.6 + 1., 15), (25., 15)):
+    for speed, rate in ((0., 30), (20 / 3.6 + 1., 30), (30 / 3.6 + 1., 24), (40 / 3.6 + 1., 15), (25., 15)):
       self._reset_speed_measurement(speed)
       self._set_prev_torque(0)
       self.assertTrue(self._tx(self._torque_cmd_msg(rate)), speed)
       self._set_prev_torque(0)
       self.assertFalse(self._tx(self._torque_cmd_msg(rate + 1)), speed)
 
-  def test_realtime_limit_by_speed(self):
-    # 30 frames of the rate: 720 at low speed, the stock 450 at high speed
+  def test_fast_release_allowed(self):
+    # the car controller drops 30 per frame below 20 km/h; the safety allows any drop toward 0
     self.safety.set_controls_allowed(True)
-    for speed, rt_delta in ((0., 720), (25., 450)):
+    for speed in (0., 25.):
+      self._reset_speed_measurement(speed)
+      self._set_prev_torque(1000)
+      self.safety.set_torque_meas(1000, 1000)
+      self.assertTrue(self._tx(self._torque_cmd_msg(970)), speed)
+
+  def test_realtime_limit_by_speed(self):
+    # 30 frames of the up rate: 900 at low speed, the stock 450 at high speed
+    self.safety.set_controls_allowed(True)
+    for speed, rt_delta in ((0., 900), (25., 450)):
       self._reset_speed_measurement(speed)
       self.safety.set_rt_torque_last(0)
       self.safety.set_desired_torque_last(rt_delta - 10)
