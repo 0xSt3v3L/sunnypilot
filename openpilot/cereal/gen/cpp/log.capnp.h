@@ -8189,8 +8189,6 @@ public:
 
   inline bool getEngageable() const;
 
-  inline bool getExperimentalMode() const;
-
   inline  ::cereal::LongitudinalPersonality getPersonality() const;
 
   inline  ::cereal::CarControl::HUDControl::VisualAlert getAlertHudVisual() const;
@@ -8267,9 +8265,6 @@ public:
   inline bool getEngageable();
   inline void setEngageable(bool value);
 
-  inline bool getExperimentalMode();
-  inline void setExperimentalMode(bool value);
-
   inline  ::cereal::LongitudinalPersonality getPersonality();
   inline void setPersonality( ::cereal::LongitudinalPersonality value);
 
@@ -8325,6 +8320,8 @@ public:
 
   inline  ::cereal::CarControl::HUDControl::AudibleAlert getAlertSound() const;
 
+  inline bool getExperimentalMode() const;
+
 private:
   ::capnp::_::StructReader _reader;
   template <typename, ::capnp::Kind>
@@ -8355,6 +8352,9 @@ public:
 
   inline  ::cereal::CarControl::HUDControl::AudibleAlert getAlertSound();
   inline void setAlertSound( ::cereal::CarControl::HUDControl::AudibleAlert value);
+
+  inline bool getExperimentalMode();
+  inline void setExperimentalMode(bool value);
 
 private:
   ::capnp::_::StructBuilder _builder;
@@ -31707,6 +31707,7 @@ inline typename SelfdriveState::Deprecated::Pipeline SelfdriveState::Pipeline::g
 }
 #endif  // !CAPNP_LITE
 inline typename SelfdriveState::Deprecated::Builder SelfdriveState::Builder::initDeprecated() {
+  _builder.setDataField<bool>(::capnp::bounded<19>() * ::capnp::ELEMENTS, 0);
   _builder.setDataField< ::uint16_t>(::capnp::bounded<4>() * ::capnp::ELEMENTS, 0);
   return typename SelfdriveState::Deprecated::Builder(_builder);
 }
@@ -31722,20 +31723,6 @@ inline bool SelfdriveState::Builder::getEngageable() {
 inline void SelfdriveState::Builder::setEngageable(bool value) {
   _builder.setDataField<bool>(
       ::capnp::bounded<18>() * ::capnp::ELEMENTS, value);
-}
-
-inline bool SelfdriveState::Reader::getExperimentalMode() const {
-  return _reader.getDataField<bool>(
-      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
-}
-
-inline bool SelfdriveState::Builder::getExperimentalMode() {
-  return _builder.getDataField<bool>(
-      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
-}
-inline void SelfdriveState::Builder::setExperimentalMode(bool value) {
-  _builder.setDataField<bool>(
-      ::capnp::bounded<19>() * ::capnp::ELEMENTS, value);
 }
 
 inline  ::cereal::LongitudinalPersonality SelfdriveState::Reader::getPersonality() const {
@@ -31792,6 +31779,20 @@ inline  ::cereal::CarControl::HUDControl::AudibleAlert SelfdriveState::Deprecate
 inline void SelfdriveState::Deprecated::Builder::setAlertSound( ::cereal::CarControl::HUDControl::AudibleAlert value) {
   _builder.setDataField< ::cereal::CarControl::HUDControl::AudibleAlert>(
       ::capnp::bounded<4>() * ::capnp::ELEMENTS, value);
+}
+
+inline bool SelfdriveState::Deprecated::Reader::getExperimentalMode() const {
+  return _reader.getDataField<bool>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+
+inline bool SelfdriveState::Deprecated::Builder::getExperimentalMode() {
+  return _builder.getDataField<bool>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS);
+}
+inline void SelfdriveState::Deprecated::Builder::setExperimentalMode(bool value) {
+  _builder.setDataField<bool>(
+      ::capnp::bounded<19>() * ::capnp::ELEMENTS, value);
 }
 
 inline typename ControlsState::Deprecated::Reader ControlsState::Reader::getDeprecated() const {
