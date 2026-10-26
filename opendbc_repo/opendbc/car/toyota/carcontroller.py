@@ -115,7 +115,8 @@ class CarController(CarControllerBase):
 
     # *** steer torque ***
     new_torque = int(round(actuators.torque * self.params.STEER_MAX))
-    self.params.STEER_DELTA_UP = low_speed_steer_delta_up(CS.out.vEgoRaw, self.stock_steer_delta_up)
+    if not self.CP.flags & ToyotaFlags.EPS_PROBE:
+      self.params.STEER_DELTA_UP = low_speed_steer_delta_up(CS.out.vEgoRaw, self.stock_steer_delta_up)
     apply_torque = apply_meas_steer_torque_limits(new_torque, self.last_torque, CS.out.steeringTorqueEps, self.params)
 
     # >100 degree/sec steering fault prevention

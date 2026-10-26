@@ -15,8 +15,10 @@ MIN_ACC_SPEED = 19. * CV.MPH_TO_MS
 PEDAL_TRANSITION = 10. * CV.MPH_TO_MS
 
 
-# LKA torque limit in EPS probe mode (closed-area tests of the EPS above 1500, see eps_probe.py)
-EPS_PROBE_STEER_MAX = 3000
+# EPS probe mode (closed-area tests, see eps_probe.py): rate sweep. The torque stays at 1500 (the EPS faults above it,
+# route 000000d1); up and down rates are allowed to 90 per frame and eps_probe.py ramps its own targets.
+EPS_PROBE_STEER_MAX = 1500
+EPS_PROBE_RATE_MAX = 90
 
 
 class CarControllerParams:
@@ -55,6 +57,10 @@ class CarControllerParams:
     else:
       self.STEER_DELTA_UP = 10       # 1.5s time to peak torque
       self.STEER_DELTA_DOWN = 25     # always lower than 45 otherwise the Rav4 faults (Prius seems ok with 50)
+
+    if CP.flags & ToyotaFlags.EPS_PROBE:
+      self.STEER_DELTA_UP = EPS_PROBE_RATE_MAX
+      self.STEER_DELTA_DOWN = EPS_PROBE_RATE_MAX
 
 
 class ToyotaSafetyFlags(IntFlag):

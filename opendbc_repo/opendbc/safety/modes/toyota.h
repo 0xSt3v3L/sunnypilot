@@ -62,7 +62,7 @@ static bool toyota_secoc = false;
 static bool toyota_alt_brake = false;
 static bool toyota_stock_longitudinal = false;
 static bool toyota_lta = false;
-static bool toyota_eps_probe = false;  // closed-area EPS tests: LKA torque limit 3000, debug builds only
+static bool toyota_eps_probe = false;  // closed-area EPS rate sweep: up/down 90 per frame at any speed, debug builds only
 static int toyota_dbc_eps_torque_factor = 100;   // conversion factor for STEER_TORQUE_EPS in %: see dbc file
 
 static uint32_t toyota_compute_checksum(const CANPacket_t *msg) {
@@ -205,12 +205,14 @@ static bool toyota_tx_hook(const CANPacket_t *msg) {
     {8.333333, 11.111111, 11.111111},
     {24., 15., 15.},
   };
-  const int toyota_max_rate_up = ROUND(safety_interpolate(TOYOTA_RATE_UP_LOOKUP, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.));
+  const int toyota_curve_rate_up = ROUND(safety_interpolate(TOYOTA_RATE_UP_LOOKUP, (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.));
+  const int toyota_max_rate_up = toyota_eps_probe ? 90 : toyota_curve_rate_up;
+  const int toyota_max_rate_down = toyota_eps_probe ? 90 : 25;
 
   const TorqueSteeringLimits TOYOTA_TORQUE_STEERING_LIMITS = {
-    .max_torque = toyota_eps_probe ? 3000 : 1500,
+    .max_torque = 1500,
     .max_rate_up = toyota_max_rate_up,     // ramp up slow (stock 15)
-    .max_rate_down = 25,                   // ramp down fast
+    .max_rate_down = toyota_max_rate_down,  // ramp down fast
     .max_torque_error = 350,               // max torque cmd in excess of motor torque
     .max_rt_delta = toyota_max_rate_up * 30,  // 25 frames of max_rate_up in 250 ms plus a 20% buffer (stock 450)
     .type = TorqueMotorLimited,

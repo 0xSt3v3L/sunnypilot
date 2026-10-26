@@ -589,13 +589,57 @@ class TestToyotaSafetyAngle(TestToyotaSafetyBase, common.AngleSteeringSafetyTest
 
 
 class TestToyotaEpsProbeSafety(TestToyotaSafetyTorque):
-  """EPS probe mode (debug builds only): every torque check at the raised 3000 limit."""
+  """EPS probe mode (debug builds only): rate sweep, 90 per frame up and down at any speed, torque still 1500."""
 
-  MAX_TORQUE_LOOKUP = [0], [3000]
+  MAX_TORQUE_LOOKUP = [0], [1500]
+  MAX_RATE_UP = 90
+  MAX_RATE_DOWN = 90
+  MAX_RT_DELTA = 2700
 
   @property
   def SAFETY_PARAM(self):
     return self.EPS_SCALE | ToyotaSafetyFlags.EPS_PROBE
+
+  def test_rate_up_by_speed(self):
+    self.safety.set_controls_allowed(True)
+    for speed in (0., 15., 25.):
+      self._reset_speed_measurement(speed)
+      self._set_prev_torque(0)
+      self.assertTrue(self._tx(self._torque_cmd_msg(90)), speed)
+      self._set_prev_torque(0)
+      self.assertFalse(self._tx(self._torque_cmd_msg(91)), speed)
+
+  def test_realtime_limit_by_speed(self):
+    self.safety.set_controls_allowed(True)
+    self._reset_speed_measurement(25.)
+    self.safety.set_rt_torque_last(-1300)
+    self.safety.set_desired_torque_last(1300)
+    self._rx(self._torque_meas_msg(1300))
+    self.assertTrue(self._tx(self._torque_cmd_msg(1300)))
+
+  def test_non_realtime_limit_down(self):
+    # the common test puts the measured torque 50 under the error band, which needs MAX_RATE_DOWN < 50
+    self.safety.set_controls_allowed(True)
+    torque_meas = 1500 - self.MAX_TORQUE_ERROR - (self.MAX_RATE_DOWN + 10)
+    for sign in (-1, 1):
+      for delta in (self.MAX_RATE_DOWN, self.MAX_RATE_DOWN - 1):
+        self.safety.set_rt_torque_last(sign * 1500)
+        self.safety.set_torque_meas(sign * torque_meas, sign * torque_meas)
+        self.safety.set_desired_torque_last(sign * 1500)
+        self.assertEqual(delta == self.MAX_RATE_DOWN, self._tx(self._torque_cmd_msg(sign * (1500 - delta))))
+
+  def test_realtime_limit_up(self):
+    # the real-time limit counts from 0 (reversals start over) and 2700 is wider than the 1500 torque range: a ramp at
+    # 90 per frame to 1500 within one window is never held back by it, only by the torque limit
+    self.safety.set_controls_allowed(True)
+    for sign in (-1, 1):
+      self.safety.init_tests()
+      self._set_prev_torque(0)
+      for t in np.arange(0, 1501, 90):
+        self.safety.set_torque_meas(sign * t, sign * t)
+        self.assertTrue(self._tx(self._torque_cmd_msg(sign * t)), t)
+      self.assertTrue(self._tx(self._torque_cmd_msg(sign * 1500)))
+      self.assertFalse(self._tx(self._torque_cmd_msg(sign * 1501)))
 
 
 class TestToyotaAltBrakeSafety(TestToyotaSafetyTorque):

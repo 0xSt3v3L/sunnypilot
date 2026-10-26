@@ -3,7 +3,7 @@ import unittest
 from opendbc.car import gen_empty_fingerprint, structs
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.hyundai.values import CAR as HYUNDAI
-from opendbc.car.toyota.eps_probe import EPS_PROBE_STEER_MAX, eps_probe_active, with_eps_probe
+from opendbc.car.toyota.eps_probe import EPS_PROBE_RATE_MAX, EPS_PROBE_STEER_MAX, eps_probe_active, with_eps_probe
 from opendbc.car.toyota.values import CAR, CarControllerParams, ToyotaFlags, ToyotaSafetyFlags
 
 
@@ -40,7 +40,10 @@ class TestEpsProbe(unittest.TestCase):
     self.assertEqual(probe.CP.safetyConfigs[-1].safetyParam & 0xFF, 73)
     self.assertTrue(eps_probe_active(probe.CP))
     self.assertEqual(probe.CC.params.STEER_MAX, EPS_PROBE_STEER_MAX)
-    self.assertEqual(EPS_PROBE_STEER_MAX, 3000)
+    self.assertEqual(EPS_PROBE_STEER_MAX, 1500)  # the EPS faults above 1500 (route 000000d1)
+    self.assertEqual(EPS_PROBE_RATE_MAX, 90)
+    self.assertEqual(probe.CC.params.STEER_DELTA_UP, 90)
+    self.assertEqual(probe.CC.params.STEER_DELTA_DOWN, 90)
 
   def test_angle_platform_not_eligible(self):
     CI = make_ci(CAR.TOYOTA_RAV4_TSS2_2023)
@@ -55,9 +58,22 @@ class TestEpsProbe(unittest.TestCase):
     self.assertFalse(eps_probe_active(CI.CP))
     self.assertIs(with_eps_probe(CI), CI)
 
-  def test_controller_reaches_3000(self):
-    self.assertEqual(final_torque(with_eps_probe(make_ci(CAR.TOYOTA_COROLLA_TSS2))), 3000)
-    self.assertEqual(final_torque(make_ci(CAR.TOYOTA_COROLLA_TSS2)), 1500)
+  def test_controller_ramps_at_probe_rate(self):
+    # rate sweep: in probe mode the car controller allows 90 per frame up and down at any speed (eps_probe.py sets the rate)
+    probe = with_eps_probe(make_ci(CAR.TOYOTA_COROLLA_TSS2))
+    self.assertEqual(final_torque(probe, frames=10), 900)
+    self.assertEqual(final_torque(probe, frames=17), 1500)
+    self.assertEqual(final_torque(make_ci(CAR.TOYOTA_COROLLA_TSS2), frames=10), 240)  # normal mode keeps rate24
+
+  def test_controller_releases_at_probe_rate(self):
+    probe = with_eps_probe(make_ci(CAR.TOYOTA_COROLLA_TSS2))
+    final_torque(probe, frames=20)
+    CC = structs.CarControl()
+    CC.latActive = True
+    CC.actuators.torque = 0.
+    CC = CC.as_reader()
+    out, _ = probe.apply(CC, 30 * 10_000_000)
+    self.assertEqual(out.torqueOutputCan, 1500 - 90)
 
 
 if __name__ == "__main__":

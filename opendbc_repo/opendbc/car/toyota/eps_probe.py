@@ -1,13 +1,14 @@
-"""EPS probe mode: a closed-area test of whether the EPS accepts LKA torque above the normal 1500.
+"""EPS probe mode: closed-area tests of the EPS. First used to find that it faults above 1500; now a rate sweep: up and
+down rates are allowed to EPS_PROBE_RATE_MAX per frame and eps_probe.py ramps its targets at the rate under test.
 
 openpilot enables it at init in joystick debug mode. The CarParams flag (car controller limit) and the safety flag (panda
 limit) are always set together, before the car controller is built.
 """
 from opendbc.car import structs
 from opendbc.car.interfaces import CarInterfaceBase
-from opendbc.car.toyota.values import EPS_PROBE_STEER_MAX, ToyotaFlags, ToyotaSafetyFlags
+from opendbc.car.toyota.values import EPS_PROBE_RATE_MAX, EPS_PROBE_STEER_MAX, ToyotaFlags, ToyotaSafetyFlags
 
-__all__ = ["EPS_PROBE_STEER_MAX", "eps_probe_active", "with_eps_probe"]
+__all__ = ["EPS_PROBE_RATE_MAX", "EPS_PROBE_STEER_MAX", "eps_probe_active", "with_eps_probe"]
 
 SafetyModel = structs.CarParams.SafetyModel
 SteerControlType = structs.CarParams.SteerControlType
