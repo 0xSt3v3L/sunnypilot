@@ -153,6 +153,10 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
   new AGNOS (the 20.x venv has nanobind, 19.9 does not), and launch_chffrplus.sh flashes AGNOS only when it boots the
   new code. Check out the branch without building, reboot (AGNOS flashes, about 10 min, two reboots), stop the manager,
   build the binaries, commit them, reboot again. Going back to an older branch flashes its AGNOS back the same way.
+  The AGNOS updater waits for a tap on the device screen before it writes the new slot.
+- AGNOS 20 has no `git-lfs`; the repo uses upstream's `lfs.py` client (big model pkls come from the Hugging Face
+  bucket). After the 19.9 -> 20.3 switch, `./lfs.py install` on the device replaced the git-lfs hooks and filter; run it
+  again if git reports that git-lfs is missing.
 - op flashes the chestnut firmware only while offroad; after switching branches the chestnut may need a manual flash.
 - The device's big driving model is commaai Light-speed 2 (`b92fc48286`, checkpoint `f22e06e5/56320/ea2f516f`, LFS oid
   `b4dead3e`), upstream's default since the 89e7e0a4c4 merge; offline against MD v3 (`op-mads-logs/lightspeed2_ab.txt`) it
