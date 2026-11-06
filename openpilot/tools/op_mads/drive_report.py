@@ -10,8 +10,8 @@ import math
 import sys
 from pathlib import Path
 
-SERVICES = {"carParams", "carState", "carControl", "controlsState", "selfdriveState", "selfdriveStateSP", "onroadEvents",
-            "radarState", "modelV2", "modelDataSP", "longitudinalPlan", "chestnutState"}
+SERVICES = {"initData", "carParams", "carState", "carControl", "controlsState", "selfdriveState", "selfdriveStateSP",
+            "onroadEvents", "radarState", "modelV2", "modelDataSP", "longitudinalPlan", "chestnutState"}
 STANDSTILL_ALERTS = ("greenLight", "leadDeparted")
 MAX_DT = 0.1  # s, longer gaps between messages do not count as time
 MIN_STOP = 2.  # s, the standstill alerts arm after 2 s
@@ -77,10 +77,12 @@ def _window(series, t0, t1):
 
 
 def _events(msgs, names):
+  from openpilot.tools.op_mads.legacy_events import event_name, is_legacy_log
+  legacy = is_legacy_log(msgs)
   out: list[tuple[float, str]] = []
   for t, evs in _of(msgs, "onroadEvents"):
     for e in evs:
-      name = str(e.name)
+      name = event_name(e, legacy)
       if name in names and not any(n == name and t - tp < EVENT_DEDUPE for tp, n in out):
         out.append((t, name))
   return out

@@ -65,6 +65,18 @@ class TestMadsTime(OpenpilotTestCase):
     assert m["mismatches"] == 1
 
 
+class TestLegacyEvents(OpenpilotTestCase):
+  def mismatches(self, os_version):
+    return mads_time([at(0., initData={"osVersion": os_version}), at(1., onroadEvents=[{"name": 116}])])["mismatches"]
+
+  def test_agnos_19_route(self):
+    # AGNOS 19 builds logged controlsMismatchLateral at @116, now a placeholder
+    assert self.mismatches("19.9\n") == 1
+
+  def test_current_route(self):
+    assert self.mismatches("20.3\n") == 0
+
+
 class TestStandstill(OpenpilotTestCase):
   def stop(self, alert):
     msgs = [at(0., selfdriveState={"enabled": False}), at(0., radarState={"leadOne": {"present": False}})]
