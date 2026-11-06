@@ -42,7 +42,8 @@ class TestAlerts(OpenpilotTestCase):
     events = log.OnroadEvent.EventName.schema.enumerants
 
     for name, e in events.items():
-      if not name.endswith("DEPRECATED"):
+      # forkReserved* only hold ordinals free for upstream events, see log.capnp
+      if not name.endswith("DEPRECATED") and not name.startswith("forkReserved"):
         fail_msg = f"{name} @{e} not in EVENTS"
         assert e in EVENTS.keys(), fail_msg
 

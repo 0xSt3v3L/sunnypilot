@@ -8,6 +8,8 @@ EventName = log.OnroadEvent.EventName
 MADS_EVENTS = ("lkasEnable", "lkasDisable", "manualLongitudinalRequired", "silentLkasEnable", "silentLkasDisable",
                "silentBrakeHold", "silentWrongGear", "silentReverseGear", "silentDoorOpen", "silentSeatbeltNotLatched",
                "silentParkBrake", "controlsMismatchLateral", "wrongCarModeAlertOnly", "pedalPressedAlertOnly")
+FORK_EVENTS = MADS_EVENTS + ("greenLight", "leadDeparted", "rightTurnBlindSpot", "leftTurnBlindSpot", "bigModelReady",
+                             "laneChangeRoadEdge")
 
 
 class TestMadsSchema(OpenpilotTestCase):
@@ -30,6 +32,17 @@ class TestMadsSchema(OpenpilotTestCase):
     assert ET.USER_DISABLE in EVENTS[EventName.lkasDisable]
     assert ET.IMMEDIATE_DISABLE in EVENTS[EventName.controlsMismatchLateral]
     assert ET.NO_ENTRY in EVENTS[EventName.controlsMismatchLateral]
+
+  def test_fork_event_ordinals(self):
+    # the fork events start at @150 so upstream can add events at @106-@149 without moving them
+    enumerants = EventName.schema.enumerants
+    assert [enumerants[name] for name in FORK_EVENTS] == list(range(150, 150 + len(FORK_EVENTS)))
+    for name, raw in enumerants.items():
+      if 106 <= raw < 150:
+        assert name == f"forkReserved{raw}"
+        assert raw not in EVENTS, name
+      else:
+        assert not name.startswith("forkReserved"), name
 
   def test_events_helpers(self):
     events = Events()

@@ -100,6 +100,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     startupNoControl @62;
     startupNoSecOcKey @63;
     startupMaster @64;
+    startupCruiseCanceled @105;
     fcw @65;
     steerSaturated @66;
     belowEngageSpeed @67;
@@ -120,10 +121,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     steerTimeLimit @83;
     vehicleSensorsInvalid @84;
     locationdTemporaryError @85;
-    locationdPermanentError @86;
     paramsdTemporaryError @87;
-    paramsdPermanentError @88;
-    actuatorsApiUnavailable @89;
     espActive @90;
     personalityChanged @91;
     aeb @92;
@@ -133,29 +131,77 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     bigModelLoading @100;
     bigModelFailed @102;
 
+    # fork (op-chestnut-mads) events start at @150; @106-@149 are kept free for upstream events.
+    # Ordinals cannot skip, so the gap holds placeholders: give each new upstream event the next one.
+    # Logs from builds before the 89e7e0a4c4 merge have the fork events at @105-@124 (tools/op_mads/legacy_events.py).
+    forkReserved106 @106;
+    forkReserved107 @107;
+    forkReserved108 @108;
+    forkReserved109 @109;
+    forkReserved110 @110;
+    forkReserved111 @111;
+    forkReserved112 @112;
+    forkReserved113 @113;
+    forkReserved114 @114;
+    forkReserved115 @115;
+    forkReserved116 @116;
+    forkReserved117 @117;
+    forkReserved118 @118;
+    forkReserved119 @119;
+    forkReserved120 @120;
+    forkReserved121 @121;
+    forkReserved122 @122;
+    forkReserved123 @123;
+    forkReserved124 @124;
+    forkReserved125 @125;
+    forkReserved126 @126;
+    forkReserved127 @127;
+    forkReserved128 @128;
+    forkReserved129 @129;
+    forkReserved130 @130;
+    forkReserved131 @131;
+    forkReserved132 @132;
+    forkReserved133 @133;
+    forkReserved134 @134;
+    forkReserved135 @135;
+    forkReserved136 @136;
+    forkReserved137 @137;
+    forkReserved138 @138;
+    forkReserved139 @139;
+    forkReserved140 @140;
+    forkReserved141 @141;
+    forkReserved142 @142;
+    forkReserved143 @143;
+    forkReserved144 @144;
+    forkReserved145 @145;
+    forkReserved146 @146;
+    forkReserved147 @147;
+    forkReserved148 @148;
+    forkReserved149 @149;
+
     # MADS: lateral-only engagement
-    lkasEnable @105;
-    lkasDisable @106;
-    manualLongitudinalRequired @107;
-    silentLkasEnable @108;
-    silentLkasDisable @109;
-    silentBrakeHold @110;
-    silentWrongGear @111;
-    silentReverseGear @112;
-    silentDoorOpen @113;
-    silentSeatbeltNotLatched @114;
-    silentParkBrake @115;
-    controlsMismatchLateral @116;
-    wrongCarModeAlertOnly @117;
-    pedalPressedAlertOnly @118;
+    lkasEnable @150;
+    lkasDisable @151;
+    manualLongitudinalRequired @152;
+    silentLkasEnable @153;
+    silentLkasDisable @154;
+    silentBrakeHold @155;
+    silentWrongGear @156;
+    silentReverseGear @157;
+    silentDoorOpen @158;
+    silentSeatbeltNotLatched @159;
+    silentParkBrake @160;
+    controlsMismatchLateral @161;
+    wrongCarModeAlertOnly @162;
+    pedalPressedAlertOnly @163;
 
     # standstill alerts
-    greenLight @119;
-    leadDeparted @120;
-    rightTurnBlindSpot @121;
-    leftTurnBlindSpot @122;
-    bigModelReady @123;
-    laneChangeRoadEdge @124;
+    greenLight @164;
+    leadDeparted @165;
+    rightTurnBlindSpot @166;
+    leftTurnBlindSpot @167;
+    bigModelReady @168;
+    laneChangeRoadEdge @169;
 
     lowBatteryDEPRECATED @40;
     soundsUnavailableDEPRECATED @47;
@@ -163,6 +209,9 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     usbErrorDEPRECATED @78;
     audioFeedbackDEPRECATED @97;
     bigModelReadyDEPRECATED @101;
+    locationdPermanentErrorDEPRECATED @86;
+    paramsdPermanentErrorDEPRECATED @88;
+    actuatorsApiUnavailableDEPRECATED @89;
   }
 }
 
@@ -614,25 +663,28 @@ struct PandaState @0xa7649e2575e4591e {
     interruptRateGmlanDEPRECATED @6;
     interruptRateInterrupts @7;
     interruptRateSpiDma @8;
-    interruptRateSpiCs @9;
-    interruptRateUart1 @10;
-    interruptRateUart2 @11;
-    interruptRateUart3 @12;
-    interruptRateUart5 @13;
-    interruptRateUartDma @14;
+    selfTestCpu @9;
+    selfTestRam @10;
+    selfTestFlash @11;
+    ecc @12;
+    outputReadback @13;
+    dma @14;
     interruptRateUsb @15;
-    interruptRateTim1 @16;
-    interruptRateTim3 @17;
+    clock @16;
+    interruptMissing @17;
     registerDivergent @18;
     interruptRateKlineInit @19;
     interruptRateClockSource @20;
     interruptRateTick @21;
     interruptRateExti @22;
     interruptRateSpi @23;
-    interruptRateUart7 @24;
+    adc @24;
     sirenMalfunction @25;
     heartbeatLoopWatchdog @26;
-    # Update max fault type in boardd when adding faults
+    interruptRateSoundDma @27;
+    mpu @28;
+    timer @29;
+    # Update max fault type in pandad when adding faults
   }
 
   enum PandaType @0x8a58adf93e5b3751 {
