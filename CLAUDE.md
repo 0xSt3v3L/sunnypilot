@@ -4,12 +4,12 @@ A personal fork of openpilot for one car: a 2024 Taiwan Corolla Altis Hybrid (`T
 openpilot longitudinal) with a comma four and a chestnut eGPU. The branch is pushed to the git remote `fork`; `origin` is
 commaai.
 
-Upstream base: openpilot v0.11.3 nightly-chestnut `ecec603414`, master `2ab952d5eb` (MD v3 big model), merged on
-2026-10-26 (the previous merge was master `75b2ccca60` on 2026-10-16). Upstream comes in as release builds (vendored
-submodules, prebuilt binaries), which share no history with master: the fork started from the v0.11.2 build
-`4800490a7`; `a6f7f353b3` (75b2ccca60) and `f5715f8e81` (2ab952d5eb) are `nightly-chestnut` build trees each committed
-with the previous upstream build as its parent (`git commit-tree origin/nightly-chestnut^{tree} -p <last upstream
-commit>`), then merged. Do the same for the next upstream: conflicts in the fork's own binaries (libparams_c.so,
+Upstream base: openpilot v0.11.3 nightly-chestnut-dev `4daed07cf5`, master `89e7e0a4c4` (AGNOS 20.3, Light-speed 2 big
+model), merged on 2026-11-06 (before: master `2ab952d5eb` on 2026-10-26, `75b2ccca60` on 2026-10-16). Upstream comes in
+as release builds (vendored submodules, prebuilt binaries), which share no history with master: the fork started from
+the v0.11.2 build `4800490a7`; `a6f7f353b3` (75b2ccca60), `f5715f8e81` (2ab952d5eb) and `c31101b6bb` (89e7e0a4c4) are
+release build trees each committed with the previous upstream build as its parent (`git commit-tree
+origin/nightly-chestnut-dev^{tree} -p <last upstream commit>`), then merged. Do the same for the next upstream: conflicts in the fork's own binaries (libparams_c.so,
 pandad, loggerd, cereal/gen, panda_h7) keep ours and get rebuilt; every other prebuilt binary comes from the build.
 Check `git_src_commit` of the build: master moves ahead of it (AGNOS 20.1 and later are on master only as of
 2026-10-26). Upstream's "A New Dawn" removed the ExperimentalMode param: openpilot longitudinal always runs the
@@ -97,7 +97,14 @@ ON THE DEVICE when their inputs change:
   they must keep matching the committed firmware.
 - Regenerate `services.h` on the Mac when services change: `python3 openpilot/cereal/services.py > openpilot/cereal/services.h`.
 - Cereal slots used by this fork: `Event.selfdriveStateSP @107` (custom `SelfdriveStateSP`), `Event.modelDataSP @108`
-  (custom `ModelDataSP`), `OnroadEvent.EventName` @105-@120, `PandaState.controlsAllowedLateral @38`.
+  (custom `ModelDataSP`), `PandaState.controlsAllowedLateral @38` (upstream's reserved field), `OnroadEvent.EventName`
+  @150 and up. Ordinals cannot skip, so `forkReserved106`-`forkReserved149` keep @106-@149 free for upstream: when a
+  merge brings a new upstream event, replace the next placeholder with it; never move the fork's events. Logs from
+  AGNOS 19 builds have the fork events at @105-@124: `tools/op_mads/legacy_events.py` reads them (drive_report does).
+- Panda: `HEALTH_FLAG_CONTROLS_ALLOWED_LATERAL` is bit 10 (upstream took 9). Upstream keeps the safety state in a
+  64-byte MPU region (`stm32h7x5_flash.ld`, `llmpu.h`): `controls_allowed_lateral` is in it, so any write to it outside
+  the safety hooks needs `mpu_safety_open()`/`mpu_safety_close()` (a stray write latches a permanent `FAULT_MPU` and
+  forces SILENT). Firmware: `scons panda/board/obj/panda_h7.bin.signed` in the test copy, copy the panda_h7 files.
 
 ## Testing
 
@@ -107,8 +114,10 @@ The worktree has no Python env. Tests run in a macOS test copy with a uv venv an
 openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if needed, fork tests + core suites, ruff
 ```
 
-- The copy lives next to the worktree (`../op-mads-test-up1019`, override with `OP_MADS_TEST`; `../op-mads-test-v0113`
-  is the copy of the previous upstream, `../op-mads-test` the v0.11.2 one) and is synced by `../op-mads-sync.sh` (`OP_MADS_SYNC`), which copies the files changed since
+- The copy lives next to the worktree (`../op-mads-test-ls2`, override with `OP_MADS_TEST`; `../op-mads-test-up1019` and
+  `../op-mads-test-v0113` are the copies of the previous upstreams, `../op-mads-test` the v0.11.2 one). Since 89e7e0a4c4
+  msgq and raylib are nanobind modules: a new copy needs `uv sync --frozen --extra testing --extra tools` and
+  `scons msgq_repo/msgq openpilot/common/libparams_c.dylib` (PyAV for frames.py is no longer in the lock file) and is synced by `../op-mads-sync.sh` (`OP_MADS_SYNC`), which copies the files changed since
   `577b3b55f`. A file reverted back to that base stays stale in the copy; check with `cmp`. The sync skips a Linux (ELF)
   binary from the release tree where the copy has a macOS native.
 - A copied test copy keeps the old copy's absolute paths in `.venv` (editable `.pth` finders, script shebangs), so
@@ -135,15 +144,23 @@ openpilot/tools/op_mads/run_tests.sh   # sync, rebuild libparams_c.dylib if need
 
 ## The comma four
 
-- Reached through an ssh host alias (the tools default to `comma_4`; `pull_route.sh` takes `OP_MADS_DEVICE`). AGNOS 19.9,
+- Reached through an ssh host alias (the tools default to `comma_4`; `pull_route.sh` takes `OP_MADS_DEVICE`). AGNOS 20.3,
   repo at `/data/openpilot` (its `origin` is the fork), `DisableUpdates=1`.
 - Deploy only while offroad (`/data/params/d/IsOnroad` not `1`). Rebooting needs the user's explicit approval.
 - `deploy.py --dry-run` runs the preflight; `deploy.py --reboot --trailer "Co-Authored-By: ..."` deploys and reboots.
 - Device scons is at `/usr/local/venv/bin/scons` (not on the ssh PATH).
+- An upstream that needs a newer AGNOS cannot go through deploy.py in one step: the device binaries must be built on the
+  new AGNOS (the 20.x venv has nanobind, 19.9 does not), and launch_chffrplus.sh flashes AGNOS only when it boots the
+  new code. Check out the branch without building, reboot (AGNOS flashes, about 10 min, two reboots), stop the manager,
+  build the binaries, commit them, reboot again. Going back to an older branch flashes its AGNOS back the same way.
 - op flashes the chestnut firmware only while offroad; after switching branches the chestnut may need a manual flash.
-- The device's big driving model is commaai MD v3 (`1e219d7785`, checkpoint `1365126a.../12864`, LFS oid `d4c7a3fc`). A
-  big model pkl only loads with the tinygrad it was compiled with (the Cinque v3 pkl fails on the current one; MD for
-  this tinygrad is `21edbbcfb9`, oid `b3864072`). Routes up to 000000b1 ran MD (the v0.11.2 build, `256f2178`),
+- The device's big driving model is commaai Light-speed 2 (`b92fc48286`, checkpoint `f22e06e5/56320/ea2f516f`, LFS oid
+  `b4dead3e`), upstream's default since the 89e7e0a4c4 merge; offline against MD v3 (`op-mads-logs/lightspeed2_ab.txt`) it
+  cuts curves least of all models tested, accelerates about like MD v3, steers ~9% busier on straights, and asks for more
+  small left requests while stopping (the low-speed deadband catches those under 0.03 m/s^2). MD v3 for this tinygrad
+  is `ad4c9cdf18`. A big model pkl only loads with the tinygrad it was compiled with (tinygrad `ec91b74` since the merge,
+  `02e698` before; the METAL builds in `op-mads-models/v0113` use 02e698 and still match upstream's outputs). Routes
+  up to 000000b1 ran MD (the v0.11.2 build, `256f2178`),
   000000b2-000000c4 MD v3, 000000c5-000000c8 MD again (2026-10-19, `e9efd7b190`): MD cuts curves less on the car (inside
   offset median 0.39 m vs 0.58 m), but the user preferred how MD v3 drives and it was restored. The big models since
   BMRLNAP v6 were compared offline (`op-mads-logs/model_compare.txt`, scripts in `op-mads-models/compare/`): BMV6 is
